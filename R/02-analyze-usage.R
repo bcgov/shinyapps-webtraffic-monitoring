@@ -223,9 +223,10 @@ browser_summary <- tech_data_raw |>
 
 # Downloads per app and file
 download_summary <- download_data_raw |>
+  select(-fileName, -event_label) |>
   summarize(
     total_downloads = sum(eventCount, na.rm = TRUE),
-    .by = c(pageTitle, fileName)
+    .by = c(pageTitle, file_label)
   ) |>
   arrange(desc(total_downloads))
 
