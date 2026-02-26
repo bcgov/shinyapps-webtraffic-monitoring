@@ -10,7 +10,9 @@ required_packages <- c(
   "slider",
   "rsconnect",
   "safepaths",
-  "glue"
+  "glue",
+  "ggplot2",
+  "forcats"
 )
 
 # Check for missing packages, and install if necessary
@@ -35,6 +37,8 @@ library(janitor)
 library(slider)
 library(safepaths)
 library(glue)
+library(ggplot2)
+library(forcats)
 
 # File paths (LAN) setup
 LAN_FOLDER <- use_network_path()
