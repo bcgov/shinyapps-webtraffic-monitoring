@@ -40,7 +40,7 @@ library(glue)
 LAN_FOLDER <- use_network_path()
 
 PROJECT_ROOT <- glue(
-  "{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps-webtraffic-monitoring"
+  "{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps_webtraffic_monitoring"
 )
 DATA_RAW <- glue("{PROJECT_ROOT}/data/")
 OUTPUT_TABLES <- glue("{PROJECT_ROOT}/outputs/tables")
