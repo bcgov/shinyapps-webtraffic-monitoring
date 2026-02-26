@@ -10,8 +10,25 @@ all_concurrency <- readRDS(file.path(DATA_RAW, "shinyapps_concurrency.rds"))
 # The API returns already-aggregated counts for that time bucket; we do not sum
 # within the bucket here, we only summarize across buckets (max/min/mean).
 
-# Summary stats per app + interval
+# Summary stats per app + interval, rename apps to match GA data
 concurrency_summary <- all_concurrency |>
+  mutate(
+    app_name = case_match(
+      app_name,
+      "so_data_viewer" ~ "Student Outcomes",
+      "popApp" ~ "popApp",
+      "LAEP" ~ "LAEP",
+      "bc-demographic-survey-dip-data-linkage-rates" ~ "BCDS-DIP Linkage Rates",
+      "sb-profile" ~ "BC Small Business",
+      "Economic-Indicators" ~ "Economic-Indicators",
+      "hsdProjApp" ~ "Household Projections",
+      "LFS_app" ~ "LFS app",
+      "interprovincial_migration_bc" ~ "Interprovincial Migration",
+      "CountryTradeApp" ~ "Country Trade Profiles",
+      "RetailSalesApp" ~ "BC Retail Sales",
+      .default = app_name
+    )
+  ) |>
   summarize(
     max_concurrent = max(concurrent_users, na.rm = TRUE),
     min_concurrent = min(concurrent_users, na.rm = TRUE),
@@ -23,12 +40,7 @@ concurrency_summary <- all_concurrency |>
   arrange(desc(max_concurrent), .by_group = TRUE) |>
   ungroup()
 
-
 #  WRITE SUMMARY CSVs
 # comment out the imap loops below to avoid overwriting CSVs during development
 
 # write_csv(concurrency_summary, file.path(OUTPUT_TABLES, "concurrency_summary.csv"))
-
-
-
-
