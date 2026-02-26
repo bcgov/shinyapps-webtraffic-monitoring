@@ -263,12 +263,14 @@ tech_breakdowns <- list(
 )
 
 #  WRITE SUMMARY CSVs
-imap(summary_tables, \(x, name) {
-  if (!is.null(x)) {
-    write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-  }
-})
+# comment out the imap loops below to avoid overwriting CSVs during development
 
-imap(tech_breakdowns, \(x, name) {
-  write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-})
+# imap(summary_tables, \(x, name) {
+#   if (!is.null(x)) {
+#     write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+#   }
+# })
+
+# imap(tech_breakdowns, \(x, name) {
+#   write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+# })
