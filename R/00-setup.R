@@ -1,6 +1,6 @@
 # Purpose: Load libraries and authenticate with Google Analytics + shinyapps.io
 
-#  Packages 
+#  Packages
 required_packages <- c(
   "googleAnalyticsR",
   "tidyverse",
@@ -39,7 +39,9 @@ library(glue)
 # File paths (LAN) setup
 LAN_FOLDER <- use_network_path()
 
-PROJECT_ROOT <- glue("{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps_webtraffic_monitoring")
+PROJECT_ROOT <- glue(
+  "{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps-webtraffic-monitoring"
+)
 DATA_RAW <- glue("{PROJECT_ROOT}/data/")
 OUTPUT_TABLES <- glue("{PROJECT_ROOT}/outputs/tables")
 OUTPUT_VISUALS <- glue("{PROJECT_ROOT}/outputs/visuals")
@@ -53,16 +55,21 @@ for (p in paths_to_create) {
 }
 
 
-# The ".Renviron" file will be stored on LAN so that people can load 
-# and do the code review with access to the credentials, but the file itself 
+# The ".Renviron" file will be stored on LAN so that people can load
+# and do the code review with access to the credentials, but the file itself
 # will not be committed to GitHub. Each user can create their own ".Renviron" file
-#  with the same variable names but different values 
+#  with the same variable names but different values
 # (e.g., for GA service account key path) if needed.
 
 # Helpers functions to read environment variables
 require_env <- function(name) {
   val <- Sys.getenv(name, unset = "")
-  if (!nzchar(val)) stop(sprintf("Missing required environment variable: %s", name), call. = FALSE)
+  if (!nzchar(val)) {
+    stop(
+      sprintf("Missing required environment variable: %s", name),
+      call. = FALSE
+    )
+  }
   val
 }
 
@@ -77,12 +84,12 @@ if (nzchar(extra_renviron) && file.exists(extra_renviron)) {
   readRenviron(extra_renviron)
 }
 
-#  Configuration (prefer env vars) 
+#  Configuration (prefer env vars)
 GA_PROPERTY_ID <- optional_env("GA_PROPERTY_ID", default = "394480605")
 GA_DATE_START <- optional_env("GA_DATE_START", default = "2024-01-01")
 GA_DATE_END <- optional_env("GA_DATE_END", default = as.character(Sys.Date()))
 
-#  GA Service Account Auth 
+#  GA Service Account Auth
 GA_SERVICE_EMAIL <- require_env("GA_SERVICE_EMAIL")
 GA_SERVICE_KEY <- require_env("GA_SERVICE_KEY") # full path to JSON key file
 
@@ -98,13 +105,9 @@ ga_auth(
   json_file = GA_SERVICE_KEY
 )
 
-#  shinyapps.io Auth 
+#  shinyapps.io Auth
 setAccountInfo(
   name = require_env("SHINY_ACC_NAME"),
   token = require_env("SHINY_TOKEN"),
   secret = require_env("SHINY_SECRET")
 )
-
-
-
-

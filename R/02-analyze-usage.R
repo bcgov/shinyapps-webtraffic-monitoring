@@ -11,7 +11,6 @@ load(file.path(DATA_RAW, "ga_raw_data.RData"))
 # tech_data_raw <- readRDS(file.path(DATA_RAW, "tech_data_raw.rds"))
 # download_data_raw <- readRDS(file.path(DATA_RAW, "download_data_raw.rds"))
 
-
 # Only 11 apps are kept since other apps are archived or private
 apps_keep <- c(
   "LAEP",
@@ -253,7 +252,8 @@ summary_tables <- list(
   location_summary = location_summary,
   tech_summary = tech_summary,
   download_summary = download_summary,
-  usage_comparison = usage_comparison
+  usage_comparison = usage_comparison,
+  weekly_usage = weekly_usage
 )
 
 tech_breakdowns <- list(
