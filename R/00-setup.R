@@ -12,7 +12,9 @@ required_packages <- c(
   "safepaths",
   "glue",
   "ggplot2",
-  "forcats"
+  "forcats",
+  "quarto",
+  "flexdashboard"
 )
 
 # Check for missing packages, and install if necessary
@@ -39,6 +41,8 @@ library(safepaths)
 library(glue)
 library(ggplot2)
 library(forcats)
+library(quarto)
+library(flexdashboard)
 
 # File paths (LAN) setup
 LAN_FOLDER <- use_network_path()
@@ -49,9 +53,10 @@ PROJECT_ROOT <- glue(
 DATA_RAW <- glue("{PROJECT_ROOT}/data/")
 OUTPUT_TABLES <- glue("{PROJECT_ROOT}/outputs/tables")
 OUTPUT_VISUALS <- glue("{PROJECT_ROOT}/outputs/visuals")
+OUTPUT_REPORTS <- glue("{PROJECT_ROOT}/outputs/reports")
 
 # Create directories if they don't exist
-paths_to_create <- c(DATA_RAW, OUTPUT_TABLES, OUTPUT_VISUALS)
+paths_to_create <- c(DATA_RAW, OUTPUT_TABLES, OUTPUT_VISUALS, OUTPUT_REPORTS)
 for (p in paths_to_create) {
   if (!dir.exists(p)) {
     dir.create(p, recursive = TRUE, showWarnings = FALSE)
