@@ -1,0 +1,257 @@
+---
+title: "ShinyApps Web Traffic Monitoring"
+format: 
+  dashboard:
+    theme: litera
+    orientation: rows
+---
+
+<!-- 
+HOW TO RUN THIS DASHBOARD FOR CODE REVIEW:
+Option 1: In Positron or RStudio, open this file and click the "Render" button at the top.
+Option 2: Run the following in the R Console: `quarto::quarto_render("Report/dashboard.qmd")`
+Option 3: Run the following in the Terminal: `quarto preview Report/dashboard.qmd`
+-->
+
+```{r setup, include=FALSE}
+library(readr)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(forcats)
+library(plotly)
+library(safepaths)
+library(glue)
+library(DT)
+
+# Define paths based on your 00-setup.R logic
+# and the working directory during render is the R/ folder.
+LAN_FOLDER <- use_network_path()
+PROJECT_ROOT <- glue("{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps_webtraffic_monitoring")
+OUTPUT_TABLES <- glue("{PROJECT_ROOT}/outputs/tables")
+
+# Load summary data for value boxes
+weekly_usage <- read_csv(file.path(OUTPUT_TABLES, "weekly_usage.csv"), show_col_types = FALSE)
+visits_summary <- read_csv(file.path(OUTPUT_TABLES, "visits_minmax_summary.csv"), show_col_types = FALSE)
+concurrency_summary <- read_csv(file.path(OUTPUT_TABLES, "concurrency_summary.csv"), show_col_types = FALSE)
+
+latest_week <- max(weekly_usage$week, na.rm = TRUE)
+latest_week_data <- weekly_usage |> filter(week == latest_week)
+
+top_app <- latest_week_data |> arrange(desc(total_sessions)) |> slice(1) |> pull(pageTitle)
+latest_visits <- sum(latest_week_data$total_sessions, na.rm = TRUE)
+peak_concurrent <- max(concurrency_summary$max_concurrent, na.rm = TRUE)
+```
+
+# Executive Summary
+
+## Row {height=35%}
+
+```{r}
+#| content: valuebox
+#| title: "Most Popular App (Latest Week)"
+list(
+  icon = "star",
+  color = "primary",
+  value = top_app
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Total Visits (Latest Week, All Apps)"
+list(
+  icon = "graph-up",
+  color = "info",
+  value = latest_visits
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Max Concurrent Users"
+list(
+  icon = "people-fill",
+  color = "success",
+  value = peak_concurrent
+)
+```
+
+## Row {height=65%}
+
+### Weekly App Visits Trend
+
+```{r}
+visits_trend_plot <- weekly_usage |>
+  ggplot(aes(x = week, y = total_sessions, color = pageTitle)) +
+  geom_line(linewidth = 1.5) +
+  labs(
+    title = "Weekly App Visits Trend",
+    x = "Week",
+    y = "Total Visits (Sessions)",
+    color = "App"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 14),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 14)
+  )
+
+ggplotly(visits_trend_plot)
+```
+
+### Maximum Concurrent Visits
+
+```{r}
+max_concurrent_plot <- concurrency_summary |>
+  filter(interval == "1m") |> # Use 1-minute buckets for true peak
+  mutate(app_name = fct_reorder(app_name, max_concurrent, .desc = TRUE)) |>
+  ggplot(aes(x = app_name, y = max_concurrent, fill = app_name)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = max_concurrent), vjust = -0.5, size = 5) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + # Add space for labels
+  labs(
+    title = "Maximum Concurrent Visits by App",
+    subtitle = "Based on 1-minute interval peaks",
+    x = "App",
+    y = "Max Concurrent Users"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    plot.subtitle = element_text(size = 16),
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+ggplotly(max_concurrent_plot, tooltip = c("x", "y"))
+```
+
+
+# App Details {scrolling="true"}
+
+## Row {.tabset height=800px}
+
+### Traffic Distribution (High Traffic)
+
+```{r}
+high_traffic_apps <- c("popApp", "Student Outcomes")
+
+visits_minmax_plot_high <- weekly_usage |>
+  filter(pageTitle %in% high_traffic_apps) |>
+  mutate(
+    pageTitle = fct_reorder(pageTitle, total_sessions, .fun = max, na.rm = TRUE)
+  ) |>
+  ggplot(aes(x = pageTitle, y = total_sessions, fill = pageTitle)) +
+  geom_boxplot(
+    alpha = 0.7,
+    outlier.size = 3,
+    show.legend = FALSE
+  ) +
+  labs(
+    title = "Distribution of Weekly Visits (High Traffic Apps)",
+    subtitle = "Box shows 25th to 75th percentile, line is median, dots are outliers",
+    x = "App",
+    y = "Weekly Visits"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    plot.subtitle = element_text(size = 16),
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+ggplotly(visits_minmax_plot_high)
+```
+
+### Traffic Distribution (Low Traffic)
+
+```{r}
+visits_minmax_plot_low <- weekly_usage |>
+  filter(!pageTitle %in% high_traffic_apps) |>
+  mutate(
+    pageTitle = fct_reorder(pageTitle, total_sessions, .fun = max, na.rm = TRUE)
+  ) |>
+  ggplot(aes(x = pageTitle, y = total_sessions, fill = pageTitle)) +
+  geom_boxplot(
+    alpha = 0.7,
+    outlier.size = 3,
+    show.legend = FALSE
+  ) +
+  coord_cartesian(
+    ylim = c(
+      0,
+      quantile(
+        weekly_usage |>
+          filter(!pageTitle %in% high_traffic_apps) |>
+          pull(total_sessions),
+        0.95,
+        na.rm = TRUE
+      )
+    )
+  ) +
+  labs(
+    title = "Distribution of Weekly Visits (Low Traffic Apps)",
+    subtitle = "Box shows 25th to 75th percentile, line is median, dots are outliers (Y-axis zoomed)",
+    x = "App",
+    y = "Weekly Visits"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    plot.subtitle = element_text(size = 16),
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+ggplotly(visits_minmax_plot_low)
+```
+
+### Trend by App
+
+```{r}
+visits_trend_faceted_plot <- weekly_usage |>
+  ggplot(aes(x = week, y = total_sessions, color = pageTitle)) +
+  geom_line(linewidth = 1.5, show.legend = FALSE) +
+  facet_wrap(~pageTitle, scales = "free_y") +
+  labs(
+    title = "Weekly App Visits Trend (By App)",
+    x = "Week",
+    y = "Total Visits"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+ggplotly(visits_trend_faceted_plot)
+```
+
+## Row
+
+### Summary Statistics Table
+
+```{r}
+visits_summary_clean <- visits_summary |>
+  rename(
+    `App Name` = pageTitle,
+    `Min Weekly Visits` = min_weekly_visits,
+    `Median Weekly Visits` = median_weekly_visits,
+    `Avg Weekly Visits` = avg_weekly_visits,
+    `Max Weekly Visits` = max_weekly_visits
+  ) |>
+  mutate(across(where(is.numeric), round, 1))
+
+datatable(visits_summary_clean, options = list(pageLength = 11, dom = 't'))
+```
