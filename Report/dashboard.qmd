@@ -35,17 +35,56 @@ weekly_usage <- read_csv(file.path(OUTPUT_TABLES, "weekly_usage.csv"), show_col_
 visits_summary <- read_csv(file.path(OUTPUT_TABLES, "visits_minmax_summary.csv"), show_col_types = FALSE)
 concurrency_summary <- read_csv(file.path(OUTPUT_TABLES, "concurrency_summary.csv"), show_col_types = FALSE)
 
+app_abbr_map <- c(
+  "Student Outcomes" = "SO",
+  "popApp" = "POP",
+  "LAEP" = "LAEP",
+  "BCDS-DIP Linkage Rates" = "DIP",
+  "BC Small Business" = "SB",
+  "Economic-Indicators" = "ECON",
+  "Household Projections" = "HHLD",
+  "LFS app" = "LFS",
+  "Interprovincial Migration" = "IM",
+  "Country Trade Profiles" = "TRADE",
+  "BC Retail Sales" = "RS"
+)
+
+weekly_usage <- weekly_usage |>
+  mutate(app_abbr = coalesce(unname(app_abbr_map[pageTitle]), pageTitle))
+
+concurrency_summary <- concurrency_summary |>
+  mutate(app_abbr = coalesce(unname(app_abbr_map[app_name]), app_name))
+
+earliest_week <- min(weekly_usage$week, na.rm = TRUE)
 latest_week <- max(weekly_usage$week, na.rm = TRUE)
+date_range_str <- paste(format(earliest_week, "%b %d, %Y"), "-", format(latest_week, "%b %d, %Y"))
 latest_week_data <- weekly_usage |> filter(week == latest_week)
 
 top_app <- latest_week_data |> arrange(desc(total_sessions)) |> slice(1) |> pull(pageTitle)
 latest_visits <- sum(latest_week_data$total_sessions, na.rm = TRUE)
 peak_concurrent <- max(concurrency_summary$max_concurrent, na.rm = TRUE)
+
+previous_week <- max(weekly_usage$week[weekly_usage$week < latest_week], na.rm = TRUE)
+previous_week_data <- weekly_usage |> filter(week == previous_week)
+prev_visits <- sum(previous_week_data$total_sessions, na.rm = TRUE)
+
+pct_change <- if (prev_visits > 0) {
+  round((latest_visits - prev_visits) / prev_visits * 100, 1)
+} else {
+  NA
+}
+pct_change_str <- if (!is.na(pct_change)) {
+  if (pct_change > 0) paste0("+", pct_change, "% vs prev week") else paste0(pct_change, "% vs prev week")
+} else {
+  ""
+}
 ```
 
 # Executive Summary
 
-## Row {height=35%}
+<p style="text-align: center; font-size: 1.1em; color: #555; margin-bottom: 2px;"><i>Data from: `r date_range_str`</i></p>
+
+## Row {height=45%}
 
 ```{r}
 #| content: valuebox
@@ -59,11 +98,12 @@ list(
 
 ```{r}
 #| content: valuebox
-#| title: "Total Visits (Latest Week, All Apps)"
+title_str <- paste0("Total Visits (Latest Week", if(pct_change_str != "") paste0(" | ", pct_change_str) else "", ")")
 list(
   icon = "graph-up",
   color = "info",
-  value = latest_visits
+  value = latest_visits,
+  title = title_str
 )
 ```
 
@@ -77,30 +117,40 @@ list(
 )
 ```
 
-## Row {height=65%}
+## Row {height=55%}
 
 ### Weekly App Visits Trend
 
 ```{r}
 visits_trend_plot <- weekly_usage |>
-  ggplot(aes(x = week, y = total_sessions, color = pageTitle)) +
+  filter(week >= as.Date("2025-07-01")) |>
+  # highlight_key is needed to group the data so Plotly knows which line to highlight
+  highlight_key(~pageTitle) |> 
+  ggplot(aes(x = week, y = total_sessions, color = pageTitle, group = pageTitle)) +
   geom_line(linewidth = 1.5) +
   labs(
     title = "Weekly App Visits Trend",
-    x = "Week",
+    x = "Week (from July 2025)",
     y = "Total Visits (Sessions)",
-    color = "App"
+    color = "App Name"
   ) +
   theme_minimal(base_size = 16) +
   theme(
     plot.title = element_text(size = 22, face = "bold"),
     axis.title = element_text(size = 18),
-    axis.text = element_text(size = 14),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
     legend.title = element_text(size = 18),
     legend.text = element_text(size = 14)
   )
 
-ggplotly(visits_trend_plot)
+# Add highlight feature: fade out other lines when hovering
+ggplotly(visits_trend_plot, tooltip = c("x", "y", "group")) |>
+  highlight(
+    on = "plotly_hover", 
+    off = "plotly_doubleclick",
+    opacityDim = 0.1 # opacity of the unselected lines
+  )
 ```
 
 ### Maximum Concurrent Visits
@@ -108,62 +158,66 @@ ggplotly(visits_trend_plot)
 ```{r}
 max_concurrent_plot <- concurrency_summary |>
   filter(interval == "1m") |> # Use 1-minute buckets for true peak
-  mutate(app_name = fct_reorder(app_name, max_concurrent, .desc = TRUE)) |>
-  ggplot(aes(x = app_name, y = max_concurrent, fill = app_name)) +
-  geom_col(show.legend = FALSE) +
+  mutate(app_abbr = fct_reorder(app_abbr, max_concurrent, .desc = TRUE)) |>
+  ggplot(aes(x = app_abbr, y = max_concurrent, fill = app_name)) +
+  geom_col() +
   geom_text(aes(label = max_concurrent), vjust = -0.5, size = 5) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + # Add space for labels
   labs(
     title = "Maximum Concurrent Visits by App",
     subtitle = "Based on 1-minute interval peaks",
     x = "App",
-    y = "Max Concurrent Users"
+    y = "Max Concurrent Users",
+    fill = "App Name"
   ) +
   theme_minimal(base_size = 16) +
   theme(
     plot.title = element_text(size = 22, face = "bold"),
     plot.subtitle = element_text(size = 16),
     axis.title = element_text(size = 18),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.x = element_text(size = 14),
     axis.text.y = element_text(size = 14)
   )
 
-ggplotly(max_concurrent_plot, tooltip = c("x", "y"))
+ggplotly(max_concurrent_plot, tooltip = c("fill", "y"))
 ```
 
 
 # App Details {scrolling="true"}
+
+<p style="text-align: center; font-size: 1.1em; color: #555; margin-bottom: 2px;"><i>Data from: `r date_range_str`</i></p>
 
 ## Row {.tabset height=800px}
 
 ### Traffic Distribution (High Traffic)
 
 ```{r}
+#| expandable: false
 high_traffic_apps <- c("popApp", "Student Outcomes")
 
 visits_minmax_plot_high <- weekly_usage |>
   filter(pageTitle %in% high_traffic_apps) |>
   mutate(
-    pageTitle = fct_reorder(pageTitle, total_sessions, .fun = max, na.rm = TRUE)
+    app_abbr = fct_reorder(app_abbr, total_sessions, .fun = max, na.rm = TRUE)
   ) |>
-  ggplot(aes(x = pageTitle, y = total_sessions, fill = pageTitle)) +
+  ggplot(aes(x = app_abbr, y = total_sessions, fill = pageTitle)) +
   geom_boxplot(
     alpha = 0.7,
-    outlier.size = 3,
-    show.legend = FALSE
+    outlier.size = 3
   ) +
   labs(
     title = "Distribution of Weekly Visits (High Traffic Apps)",
     subtitle = "Box shows 25th to 75th percentile, line is median, dots are outliers",
     x = "App",
-    y = "Weekly Visits"
+    y = "Weekly Visits",
+    fill = "App Name"
   ) +
   theme_minimal(base_size = 16) +
   theme(
     plot.title = element_text(size = 22, face = "bold"),
     plot.subtitle = element_text(size = 16),
     axis.title = element_text(size = 18),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.x = element_text(size = 14),
     axis.text.y = element_text(size = 14)
   )
 
@@ -173,16 +227,16 @@ ggplotly(visits_minmax_plot_high)
 ### Traffic Distribution (Low Traffic)
 
 ```{r}
+#| expandable: false
 visits_minmax_plot_low <- weekly_usage |>
   filter(!pageTitle %in% high_traffic_apps) |>
   mutate(
-    pageTitle = fct_reorder(pageTitle, total_sessions, .fun = max, na.rm = TRUE)
+    app_abbr = fct_reorder(app_abbr, total_sessions, .fun = max, na.rm = TRUE)
   ) |>
-  ggplot(aes(x = pageTitle, y = total_sessions, fill = pageTitle)) +
+  ggplot(aes(x = app_abbr, y = total_sessions, fill = pageTitle)) +
   geom_boxplot(
     alpha = 0.7,
-    outlier.size = 3,
-    show.legend = FALSE
+    outlier.size = 3
   ) +
   coord_cartesian(
     ylim = c(
@@ -200,14 +254,15 @@ visits_minmax_plot_low <- weekly_usage |>
     title = "Distribution of Weekly Visits (Low Traffic Apps)",
     subtitle = "Box shows 25th to 75th percentile, line is median, dots are outliers (Y-axis zoomed)",
     x = "App",
-    y = "Weekly Visits"
+    y = "Weekly Visits",
+    fill = "App Name"
   ) +
   theme_minimal(base_size = 16) +
   theme(
     plot.title = element_text(size = 22, face = "bold"),
     plot.subtitle = element_text(size = 16),
     axis.title = element_text(size = 18),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.x = element_text(size = 14),
     axis.text.y = element_text(size = 14)
   )
 
@@ -217,22 +272,25 @@ ggplotly(visits_minmax_plot_low)
 ### Trend by App
 
 ```{r}
+#| expandable: false
 visits_trend_faceted_plot <- weekly_usage |>
-  ggplot(aes(x = week, y = total_sessions, color = pageTitle)) +
+  filter(week >= as.Date("2025-07-01")) |>
+  ggplot(aes(x = week, y = total_sessions, color = app_abbr)) +
   geom_line(linewidth = 1.5, show.legend = FALSE) +
-  facet_wrap(~pageTitle, scales = "free_y") +
+  facet_wrap(~app_abbr) +
   labs(
     title = "Weekly App Visits Trend (By App)",
-    x = "Week",
+    x = "Week (from July 2025)",
     y = "Total Visits"
   ) +
   theme_minimal(base_size = 16) +
   theme(
     plot.title = element_text(size = 22, face = "bold"),
     axis.title = element_text(size = 18),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.x = element_text(size = 12),
     axis.text.y = element_text(size = 12),
-    strip.text = element_text(size = 14, face = "bold")
+    strip.text = element_text(size = 14, face = "bold"),
+    panel.spacing.y = unit(3, "lines") # Force a much larger vertical space between plots
   )
 
 ggplotly(visits_trend_faceted_plot)
@@ -244,6 +302,11 @@ ggplotly(visits_trend_faceted_plot)
 
 ```{r}
 visits_summary_clean <- visits_summary |>
+  mutate(
+    app_abbr = coalesce(unname(app_abbr_map[pageTitle]), pageTitle),
+    pageTitle = paste0(pageTitle, " (", app_abbr, ")")
+  ) |>
+  select(-app_abbr) |>
   rename(
     `App Name` = pageTitle,
     `Min Weekly Visits` = min_weekly_visits,
