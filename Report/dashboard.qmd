@@ -4,6 +4,7 @@ format:
   dashboard:
     theme: litera
     orientation: rows
+    embed-resources: true
 ---
 
 <!-- 
@@ -73,8 +74,11 @@ pct_change <- if (prev_visits > 0) {
 } else {
   NA
 }
+abs_change <- latest_visits - prev_visits
+
 pct_change_str <- if (!is.na(pct_change)) {
-  if (pct_change > 0) paste0("+", pct_change, "% vs prev week") else paste0(pct_change, "% vs prev week")
+  abs_sign <- if (abs_change > 0) "+" else ""
+  paste0(abs_sign, abs_change, " (", abs_sign, pct_change, "%) vs prev week")
 } else {
   ""
 }
@@ -124,12 +128,10 @@ list(
 ```{r}
 visits_trend_plot <- weekly_usage |>
   filter(week >= as.Date("2025-07-01")) |>
-  # highlight_key is needed to group the data so Plotly knows which line to highlight
-  highlight_key(~pageTitle) |> 
   ggplot(aes(x = week, y = total_sessions, color = pageTitle, group = pageTitle)) +
   geom_line(linewidth = 1.5) +
   labs(
-    title = "Weekly App Visits Trend",
+    title = "Weekly App Visits Trend<br><sup style='font-size:14px; font-weight:normal; color:#555;'><i>Tip: Click an app in the legend to isolate its trend line or reset.</i></sup>",
     x = "Week (from July 2025)",
     y = "Total Visits (Sessions)",
     color = "App Name"
@@ -144,13 +146,9 @@ visits_trend_plot <- weekly_usage |>
     legend.text = element_text(size = 14)
   )
 
-# Add highlight feature: fade out other lines when hovering
+# Convert to plotly with default interactive legend toggles
 ggplotly(visits_trend_plot, tooltip = c("x", "y", "group")) |>
-  highlight(
-    on = "plotly_hover", 
-    off = "plotly_doubleclick",
-    opacityDim = 0.1 # opacity of the unselected lines
-  )
+  layout(legend = list(itemclick = "toggleothers", itemdoubleclick = "toggle"))
 ```
 
 ### Maximum Concurrent Visits
@@ -175,7 +173,7 @@ max_concurrent_plot <- concurrency_summary |>
     plot.title = element_text(size = 22, face = "bold"),
     plot.subtitle = element_text(size = 16),
     axis.title = element_text(size = 18),
-    axis.text.x = element_text(size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
     axis.text.y = element_text(size = 14)
   )
 
@@ -269,17 +267,17 @@ visits_minmax_plot_low <- weekly_usage |>
 ggplotly(visits_minmax_plot_low)
 ```
 
-### Trend by App
+### Trend by App (High Traffic)
 
 ```{r}
 #| expandable: false
-visits_trend_faceted_plot <- weekly_usage |>
-  filter(week >= as.Date("2025-07-01")) |>
+visits_trend_faceted_high <- weekly_usage |>
+  filter(week >= as.Date("2025-07-01"), pageTitle %in% high_traffic_apps) |>
   ggplot(aes(x = week, y = total_sessions, color = app_abbr)) +
   geom_line(linewidth = 1.5, show.legend = FALSE) +
   facet_wrap(~app_abbr) +
   labs(
-    title = "Weekly App Visits Trend (By App)",
+    title = "Weekly App Visits Trend (High Traffic)",
     x = "Week (from July 2025)",
     y = "Total Visits"
   ) +
@@ -290,10 +288,38 @@ visits_trend_faceted_plot <- weekly_usage |>
     axis.text.x = element_text(size = 12),
     axis.text.y = element_text(size = 12),
     strip.text = element_text(size = 14, face = "bold"),
-    panel.spacing.y = unit(3, "lines") # Force a much larger vertical space between plots
+    panel.spacing.y = unit(3, "lines") 
   )
 
-ggplotly(visits_trend_faceted_plot)
+ggplotly(visits_trend_faceted_high)
+```
+
+### Trend by App (Low Traffic)
+
+```{r}
+#| expandable: false
+visits_trend_faceted_low <- weekly_usage |>
+  filter(week >= as.Date("2025-07-01"), !pageTitle %in% high_traffic_apps) |>
+  ggplot(aes(x = week, y = total_sessions, color = app_abbr)) +
+  geom_line(linewidth = 1.5, show.legend = FALSE) +
+  facet_wrap(~app_abbr) +
+  scale_y_continuous(limits = c(0, 140)) +
+  labs(
+    title = "Weekly App Visits Trend (Low Traffic)",
+    x = "Week (from July 2025)",
+    y = "Total Visits"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 22, face = "bold"),
+    axis.title = element_text(size = 18),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    strip.text = element_text(size = 14, face = "bold"),
+    panel.spacing.y = unit(3, "lines") 
+  )
+
+ggplotly(visits_trend_faceted_low)
 ```
 
 ## Row
