@@ -8,8 +8,7 @@ concurrency_summary <- read_csv(file.path(
   OUTPUT_TABLES,
   "concurrency_summary.csv"
 ))
-
-
+download_summary <- read_csv(file.path(OUTPUT_TABLES, "download_summary.csv"))
 # 1. Trend line of app visits (sessions)
 # Combined plot
 visits_trend_plot <- weekly_usage |>
@@ -50,15 +49,43 @@ visits_trend_faceted_plot <- weekly_usage |>
   )
 
 
-# 2. Min/Max weekly visits summary table
+# 2. Min/Max weekly visits, time, and downloads summary table
+# Aggregate downloads to attach to the summary table
+downloads_by_app <- download_summary |>
+  summarize(
+    total_downloads = sum(total_downloads, na.rm = TRUE),
+    .by = pageTitle
+  )
+
 visits_minmax_summary <- weekly_usage |>
   summarize(
     min_weekly_visits = min(total_sessions, na.rm = TRUE),
     median_weekly_visits = median(total_sessions, na.rm = TRUE),
     avg_weekly_visits = round(mean(total_sessions, na.rm = TRUE), 1),
     max_weekly_visits = max(total_sessions, na.rm = TRUE),
+
+    min_time_min = round(
+      min(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+    avg_time_min = round(
+      mean(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+    max_time_min = round(
+      max(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+
+    weeks_active = n(),
     .by = pageTitle
   ) |>
+  left_join(downloads_by_app, by = "pageTitle") |>
+  mutate(
+    total_downloads = replace_na(total_downloads, 0),
+    avg_weekly_downloads = round(total_downloads / weeks_active, 1)
+  ) |>
+  select(-weeks_active, -total_downloads) |>
   arrange(desc(max_weekly_visits))
 
 

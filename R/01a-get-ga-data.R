@@ -48,6 +48,7 @@ download_data_raw <- ga_data(
   date_range = c(GA_DATE_START, GA_DATE_END),
   metrics = c("eventCount"),
   dimensions = c(
+    "date",
     "pageTitle",
     "pagePath",
     "eventName",

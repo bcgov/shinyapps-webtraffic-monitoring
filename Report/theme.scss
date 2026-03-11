@@ -1,0 +1,241 @@
+/*-- scss:defaults --*/
+$primary: #003366;
+$secondary: #4b5d73;
+$success: #2f6b3f;
+$info: #3b6c99;
+$warning: #d2a106;
+$body-color: #2d2d2d;
+$body-bg: #ffffff;
+$card-border-color: #d9e2ec;
+$card-cap-bg: #ffffff;
+$link-color: #003366;
+$font-family-sans-serif: "BC Sans", "Segoe UI", Arial, sans-serif;
+
+/*-- scss:rules --*/
+@font-face {
+  font-family: "BC Sans";
+  src: url("www/BCSans-Regular.woff2") format("woff2"),
+       url("www/BCSans-Regular.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "BC Sans";
+  src: url("www/BCSans-Italic.woff2") format("woff2"),
+       url("www/BCSans-Italic.woff") format("woff");
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "BC Sans";
+  src: url("www/BCSans-Bold.woff2") format("woff2"),
+       url("www/BCSans-Bold.woff") format("woff");
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "BC Sans";
+  src: url("www/BCSans-BoldItalic.woff2") format("woff2"),
+       url("www/BCSans-BoldItalic.woff") format("woff");
+  font-style: italic;
+  font-weight: 700;
+}
+
+body,
+.quarto-title-block,
+.card,
+.value-box,
+.navbar,
+.plotly,
+.datatables {
+  font-family: "BC Sans", "Segoe UI", Arial, sans-serif;
+}
+
+.navbar {
+  min-height: 88px;
+  padding: 0.55rem 1.25rem;
+  background: #003366;
+  border-bottom: 4px solid #fcba19;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.navbar-brand,
+.navbar-title {
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+}
+
+.navbar .container-fluid,
+.navbar .container-xxl {
+  align-items: center;
+}
+
+.navbar .navbar-brand img,
+.navbar .quarto-dashboard-header-logo,
+.navbar img.logo {
+  max-height: 58px;
+  height: 58px;
+  width: auto;
+  margin-right: 1rem;
+}
+
+.navbar .nav-link,
+.navbar .navbar-nav .nav-link {
+  font-size: 1rem;
+  color: #ffffff;
+  opacity: 0.95;
+}
+
+.navbar .nav-link:hover,
+.navbar .navbar-nav .nav-link:hover,
+.navbar .nav-link:focus,
+.navbar .navbar-nav .nav-link:focus {
+  color: #fcba19;
+}
+
+@media screen and (min-width: 300px) and (max-width: 499px) {
+  .navbar {
+    min-height: 68px;
+    padding: 0.45rem 0.8rem;
+  }
+
+  .navbar-brand,
+  .navbar-title {
+    font-size: 1.02rem;
+  }
+
+  .navbar .navbar-brand img,
+  .navbar .quarto-dashboard-header-logo,
+  .navbar img.logo {
+    max-height: 38px;
+    height: 38px;
+  }
+}
+
+.card {
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 6px rgba(0, 51, 102, 0.08);
+}
+
+.dashboard-page {
+  padding-top: 0.5rem;
+}
+
+.dashboard-page .card {
+  margin-bottom: 0.75rem;
+}
+
+.dashboard-page .card-body,
+.dashboard-page .value-box {
+  padding: 0.45rem 0.65rem;
+}
+
+.dashboard-page .value-box {
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.08rem;
+}
+
+.dashboard-page .card-header {
+  padding: 0.6rem 0.9rem 0.2rem;
+}
+
+.dashboard-page .card-title {
+  margin-bottom: 0.35rem;
+  line-height: 1.2;
+}
+
+.dashboard-page .html-widget,
+.dashboard-page .plotly,
+.dashboard-page .plot-container {
+  margin-bottom: 0;
+}
+
+.dashboard-page .cell-output-display {
+  margin-top: 0.25rem;
+}
+
+.value-box {
+  border-left: 6px solid #fcba19;
+  overflow: visible;
+}
+
+.value-box .value-box-grid,
+.value-box .value-box-area,
+.value-box .value-box-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.value-box .value-box-title,
+.value-box .value-box-subtitle,
+.value-box .card-title {
+  font-size: 0.5rem;
+  line-height: 1.06;
+  margin-bottom: 0.04rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.value-box .value-box-value {
+  font-size: 0.64rem;
+  line-height: 1.0;
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.value-box .bi {
+  font-size: 0.7rem;
+}
+
+.card-title,
+h1, h2, h3, h4 {
+  color: #003366;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.card-title {
+  font-size: 1rem;
+}
+
+.plot-caption {
+  color: #5c6b7a;
+  font-size: 0.82rem;
+}
