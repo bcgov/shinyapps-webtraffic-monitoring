@@ -11,7 +11,6 @@ load(file.path(DATA_RAW, "ga_raw_data.RData"))
 # tech_data_raw <- readRDS(file.path(DATA_RAW, "tech_data_raw.rds"))
 # download_data_raw <- readRDS(file.path(DATA_RAW, "download_data_raw.rds"))
 
-
 # Only 11 apps are kept since other apps are archived or private
 apps_keep <- c(
   "LAEP",
@@ -223,9 +222,10 @@ browser_summary <- tech_data_raw |>
 
 # Downloads per app and file
 download_summary <- download_data_raw |>
+  select(-fileName, -event_label) |>
   summarize(
     total_downloads = sum(eventCount, na.rm = TRUE),
-    .by = c(pageTitle, fileName)
+    .by = c(pageTitle, file_label)
   ) |>
   arrange(desc(total_downloads))
 
@@ -252,7 +252,8 @@ summary_tables <- list(
   location_summary = location_summary,
   tech_summary = tech_summary,
   download_summary = download_summary,
-  usage_comparison = usage_comparison
+  usage_comparison = usage_comparison,
+  weekly_usage = weekly_usage
 )
 
 tech_breakdowns <- list(
@@ -262,12 +263,14 @@ tech_breakdowns <- list(
 )
 
 #  WRITE SUMMARY CSVs
-imap(summary_tables, \(x, name) {
-  if (!is.null(x)) {
-    write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-  }
-})
+# comment out the imap loops below to avoid overwriting CSVs during development
 
-imap(tech_breakdowns, \(x, name) {
-  write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-})
+# imap(summary_tables, \(x, name) {
+#   if (!is.null(x)) {
+#     write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+#   }
+# })
+
+# imap(tech_breakdowns, \(x, name) {
+#   write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+# })

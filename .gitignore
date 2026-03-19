@@ -24,3 +24,5 @@ ga-auth-key.json
 *_cache/
 /cache/
 rsconnect/
+/Report/dashboard_files/
+*.txt

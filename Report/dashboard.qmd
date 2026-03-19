@@ -1,0 +1,657 @@
+---
+title: "Shiny Dashboard Traffic Monitoring"
+logo: "www/bcstats_logo_rev.png"
+format: 
+  dashboard:
+    theme:
+      - litera
+      - theme.scss
+    orientation: rows
+    embed-resources: true
+    nav-buttons:
+      - icon: github
+        href: https://github.com/bcgov/shinyapps-webtraffic-monitoring
+---
+
+<!-- 
+HOW TO RUN THIS DASHBOARD FOR CODE REVIEW:
+Option 1: In Positron or RStudio, open this file and click the "Render" button at the top.
+Option 2: Run the following in the R Console: `quarto::quarto_render("Report/dashboard.qmd")`
+Option 3: Run the following in the Terminal: `quarto preview Report/dashboard.qmd`
+-->
+
+```{r setup, include=FALSE}
+library(readr)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(forcats)
+library(plotly)
+library(lubridate)
+library(safepaths)
+library(glue)
+library(DT)
+library(scales)
+
+# Define paths based on your 00-setup.R logic
+# and the working directory during render is the R/ folder.
+LAN_FOLDER <- use_network_path()
+PROJECT_ROOT <- glue("{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps_webtraffic_monitoring")
+OUTPUT_TABLES <- glue("{PROJECT_ROOT}/outputs/tables")
+DATA_RAW <- glue("{PROJECT_ROOT}/data")
+
+# Load summary data for value boxes
+weekly_usage <- read_csv(file.path(OUTPUT_TABLES, "weekly_usage.csv"), show_col_types = FALSE)
+visits_summary <- read_csv(file.path(OUTPUT_TABLES, "visits_minmax_summary.csv"), show_col_types = FALSE)
+download_summary <- read_csv(file.path(OUTPUT_TABLES, "download_summary.csv"), show_col_types = FALSE)
+daily_usage_raw <- readRDS(file.path(DATA_RAW, "daily_usage_raw.rds"))
+download_data_raw <- readRDS(file.path(DATA_RAW, "download_data_raw.rds"))
+
+app_abbr_map <- c(
+  "Student Outcomes" = "SO",
+  "popApp" = "POP",
+  "LAEP" = "LAEP",
+  "BCDS-DIP Linkage Rates" = "DIP",
+  "BC Small Business" = "SB",
+  "Economic-Indicators" = "ECON",
+  "Household Projections" = "HHLD",
+  "LFS app" = "LFS",
+  "Interprovincial Migration" = "IM",
+  "Country Trade Profiles" = "TRADE",
+  "BC Retail Sales" = "RS"
+)
+
+weekly_usage <- weekly_usage |>
+  mutate(app_abbr = coalesce(unname(app_abbr_map[pageTitle]), pageTitle))
+
+latest_week <- max(weekly_usage$week, na.rm = TRUE)
+latest_week_data <- weekly_usage |> filter(week == latest_week)
+
+latest_visits <- sum(latest_week_data$total_sessions, na.rm = TRUE)
+
+previous_week <- max(weekly_usage$week[weekly_usage$week < latest_week], na.rm = TRUE)
+previous_week_data <- weekly_usage |> filter(week == previous_week)
+prev_visits <- sum(previous_week_data$total_sessions, na.rm = TRUE)
+
+pct_change <- if (prev_visits > 0) {
+  round((latest_visits - prev_visits) / prev_visits * 100, 1)
+} else {
+  NA
+}
+abs_change <- latest_visits - prev_visits
+
+pct_change_str <- if (!is.na(pct_change)) {
+  abs_sign <- if (abs_change > 0) "+" else ""
+  paste0(abs_sign, abs_change, " visits; ", abs_sign, pct_change, "%")
+} else {
+  ""
+}
+
+# Total downloads for the latest full week
+downloads_val <- download_data_raw |>
+  mutate(week = floor_date(as.Date(date), "week", week_start = 1)) |>
+  filter(week == latest_week) |>
+  summarize(total = sum(eventCount, na.rm = TRUE)) |>
+  pull(total)
+downloads_val <- if (length(downloads_val) == 0 || is.na(downloads_val)) 0L else downloads_val
+
+# Shared Plotly branding helpers
+bc_font <- list(family = "BC Sans, Segoe UI, Arial, sans-serif")
+
+app_colors <- c(
+  "SO"    = "#1F6B75", "POP"   = "#003366", "LAEP"  = "#6C3D8A",
+  "DIP"   = "#C8373A", "SB"    = "#2F6B3F", "ECON"  = "#B07D12",
+  "HHLD"  = "#7A5230", "LFS"   = "#1B5EA6", "IM"    = "#4A7C59",
+  "TRADE" = "#9E4C1A", "RS"    = "#5B3A6E"
+)
+
+# Streamlined modebar: only reset + download image
+plotly_config <- list(
+  displaylogo = FALSE,
+  modeBarButtonsToRemove = list(
+    "zoom2d", "pan2d", "select2d", "lasso2d",
+    "zoomIn2d", "zoomOut2d", "autoScale2d",
+    "hoverClosestCartesian", "hoverCompareCartesian"
+  ),
+  responsive = TRUE
+)
+```
+
+# Dashboard Summary {scrolling="true"}
+
+## Row {height=210px}
+
+```{r}
+#| content: valuebox
+#| title: "Total Visits Across All Dashboards, Last Full Week"
+list(
+  color = "primary",
+  value = comma(latest_visits),
+  subtitle = format(latest_week, "%b %d, %Y")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Change in Visits from Previous Week Across All Dashboards"
+list(
+  color = if (abs_change >= 0) "success" else "warning",
+  value = paste0(if (abs_change > 0) "+" else "", comma(abs_change))
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Percent Change from Previous Week"
+list(
+  color = if (pct_change >= 0) "success" else "warning",
+  value = if (!is.na(pct_change)) paste0(if (pct_change > 0) "+" else "", pct_change, "%") else "NA"
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Total Downloads Across All Dashboards, Last Full Week"
+list(
+  color = "info",
+  value = comma(downloads_val)
+)
+```
+
+## Row {height=500px}
+
+### Weekly Dashboard Visits Trend
+
+```{r}
+trend_apps  <- sort(unique(weekly_usage$app_abbr))
+trend_palette <- c(
+  "SO"    = "#1F6B75", "POP"   = "#003366", "LAEP"  = "#6C3D8A",
+  "DIP"   = "#C8373A", "SB"    = "#2F6B3F", "ECON"  = "#B07D12",
+  "HHLD"  = "#7A5230", "LFS"   = "#1B5EA6", "IM"    = "#4A7C59",
+  "TRADE" = "#9E4C1A", "RS"    = "#5B3A6E"
+)
+
+trend_data <- weekly_usage |>
+  filter(week >= as.Date("2025-07-01"))
+
+# Build one trace per app
+trend_traces <- lapply(trend_apps, function(app_i) {
+  d <- trend_data |> filter(app_abbr == app_i) |> arrange(week)
+  list(
+    x             = d$week,
+    y             = d$total_sessions,
+    type          = "scatter",
+    mode          = "lines",
+    name          = app_i,
+    line          = list(color = unname(trend_palette[app_i]), width = 2),
+    hovertemplate = paste0("<b>", app_i, "</b><br>Week: %{x|%b %d, %Y}<br>Sessions: %{y:,}<extra></extra>")
+  )
+})
+
+p_trend <- plot_ly()
+for (tr in trend_traces) {
+  p_trend <- add_trace(p_trend,
+    x = tr$x, y = tr$y,
+    type = tr$type, mode = tr$mode,
+    name = tr$name, line = tr$line,
+    hovertemplate = tr$hovertemplate
+  )
+}
+
+p_trend |>
+  layout(
+    title = list(
+      text = "<b>Weekly Dashboard Visits Trend (from July 2025)</b>",
+      font = modifyList(bc_font, list(size = 15, color = "#003366"))
+    ),
+    xaxis = list(
+      title    = "",
+      tickfont = modifyList(bc_font, list(size = 11, color = "#2d2d2d")),
+      gridcolor = "#e8ecf0",
+      tickformat = "%b %Y"
+    ),
+    yaxis = list(
+      title    = "",
+      tickfont = modifyList(bc_font, list(size = 11, color = "#5c6b7a")),
+      gridcolor = "#e8ecf0",
+      automargin = TRUE
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0, y = -0.15,
+      font = modifyList(bc_font, list(size = 10)),
+      title = list(text = "")
+    ),
+    annotations = list(list(
+      text      = "Tip: Click a dashboard in the legend to isolate its trend; click again to reset.",
+      x = 1, y = -0.22, xref = "paper", yref = "paper",
+      xanchor = "right", yanchor = "top",
+      showarrow = FALSE,
+      font = modifyList(bc_font, list(size = 10, color = "#8a9bac"))
+    )),
+    plot_bgcolor  = "#ffffff",
+    paper_bgcolor = "#ffffff",
+    margin = list(l = 10, r = 20, t = 50, b = 80)
+  ) |>
+  layout(legend = list(itemclick = "toggleothers", itemdoubleclick = "toggle")) |>
+  config(
+    displaylogo            = plotly_config$displaylogo,
+    modeBarButtonsToRemove = plotly_config$modeBarButtonsToRemove,
+    responsive             = plotly_config$responsive
+  )
+```
+
+## Row {height=620px}
+
+### Total Time on Dashboard by Dashboard
+
+```{r}
+time_data <- daily_usage_raw |>
+  filter(pageTitle %in% names(app_abbr_map)) |>
+  mutate(
+    date = as.Date(date),
+    week_start = floor_date(date, "week", week_start = 1),
+    weekday = wday(date, label = TRUE, abbr = TRUE, week_start = 1),
+    total_time_mins = userEngagementDuration / 60
+  )
+
+# Aggregate to weekday totals by app for latest and previous week
+time_compare <- time_data |>
+  filter(week_start %in% c(latest_week, previous_week)) |>
+  mutate(
+    period = if_else(week_start == latest_week, "Latest Week", "Previous Week"),
+    app = coalesce(unname(app_abbr_map[pageTitle]), pageTitle)
+  ) |>
+  summarize(total_time = sum(total_time_mins, na.rm = TRUE), .by = c(app, weekday, period)) |>
+  mutate(
+    weekday = factor(
+      as.character(weekday),
+      levels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    )
+  )
+
+apps            <- sort(unique(time_compare$app))
+weekdays_ordered <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+default_app <- if ("POP" %in% apps) "POP" else apps[1]
+
+period_colors <- list(
+  "Latest Week"   = "#003366",
+  "Previous Week" = "#8fa8c8"
+)
+
+traces <- list()
+for (i in seq_along(apps)) {
+  app_i   <- apps[i]
+  d       <- time_compare |> filter(app == app_i)
+  visible <- app_i == default_app
+
+  for (period_i in c("Latest Week", "Previous Week")) {
+    d_p <- d |> filter(period == period_i) |> arrange(weekday)
+    traces <- c(traces, list(list(
+      x    = as.character(d_p$weekday),
+      y    = d_p$total_time,
+      type = "scatter",
+      mode = "lines+markers",
+      name = period_i,
+      line = list(
+        dash  = if (period_i == "Latest Week") "solid" else "dash",
+        color = period_colors[[period_i]],
+        width = 2.5
+      ),
+      marker = list(
+        size  = 7,
+        color = period_colors[[period_i]],
+        line  = list(color = "white", width = 1)
+      ),
+      visible       = visible,
+      hovertemplate = paste0(
+        "<b>", app_i, " \u2013 ", period_i, "</b><br>",
+        "%{x}: %{y:.1f} min<extra></extra>"
+      ),
+      showlegend = visible
+    )))
+  }
+}
+
+n_traces <- length(traces)
+
+# y-axis title is folded into the plot title via button updates — no separate axis label
+buttons <- lapply(seq_along(apps), function(i) {
+  app_i        <- apps[i]
+  visible      <- rep(FALSE, n_traces)
+  idx          <- c((i - 1) * 2 + 1, (i - 1) * 2 + 2)
+  visible[idx] <- TRUE
+
+  app_vals <- time_compare |> filter(app == app_i) |> pull(total_time)
+  y_max    <- max(app_vals, na.rm = TRUE) * 1.15
+
+  list(
+    method = "update",
+    args   = list(
+      list(visible = as.list(visible), showlegend = as.list(visible)),
+      list(
+        title = list(
+          text    = paste0("<b>Total Time on Dashboard (Minutes) by Day of Week \u2013 ", app_i, "</b>"),
+          font    = modifyList(bc_font, list(size = 15, color = "#003366"))
+        ),
+        yaxis = list(
+          title      = "",          # label removed; unit in plot title
+          range      = list(0, y_max),
+          automargin = TRUE,
+          tickfont   = modifyList(bc_font, list(size = 10, color = "#5c6b7a")),
+          gridcolor  = "#e8ecf0"
+        )
+      )
+    ),
+    label = app_i
+  )
+})
+
+first_vals <- time_compare |> filter(app == default_app) |> pull(total_time)
+y_max_init <- max(first_vals, na.rm = TRUE) * 1.15
+
+plot_ly() |>
+  (\(p) Reduce(function(acc, tr) add_trace(acc,
+    x             = tr$x,    y          = tr$y,
+    type          = tr$type, mode       = tr$mode,
+    name          = tr$name,
+    line          = tr$line, marker     = tr$marker,
+    visible       = tr$visible,
+    hovertemplate = tr$hovertemplate,
+    showlegend    = tr$showlegend
+  ), traces, init = p))() |>
+  layout(
+    title = list(
+      text    = paste0("<b>Total Time (Minutes) on Dashboard by Day of Week \u2013 ", default_app, "</b>"),
+      font    = modifyList(bc_font, list(size = 15, color = "#003366"))
+    ),
+    xaxis = list(
+      title         = "",
+      categoryorder = "array",
+      categoryarray = weekdays_ordered,
+      tickfont      = modifyList(bc_font, list(size = 11, color = "#2d2d2d", bold = TRUE)),
+      gridcolor     = "#e8ecf0"
+    ),
+    yaxis = list(
+      title      = "",
+      range      = list(0, y_max_init),
+      automargin = TRUE,
+      tickfont   = modifyList(bc_font, list(size = 10, color = "#5c6b7a")),
+      gridcolor  = "#e8ecf0"
+    ),
+    legend = list(
+      orientation = "h", x = 0, y = 1.08,
+      font        = modifyList(bc_font, list(size = 11))
+    ),
+    annotations = list(
+      list(
+        text      = "Tip: Use the dropdown to switch dashboards.",
+        x = 1, y = -0.1, xref = "paper", yref = "paper",
+        xanchor   = "right", yanchor = "top",
+        showarrow = FALSE,
+        font      = modifyList(bc_font, list(size = 10, color = "#8a9bac"))
+      )
+    ),
+    updatemenus = list(list(
+      type        = "dropdown",
+      direction   = "down",
+      x           = 0.0, xanchor = "left",
+      y           = 1.22, yanchor = "top",
+      buttons     = buttons,
+      active      = which(apps == default_app) - 1L,
+      showactive  = TRUE,
+      bgcolor     = "#f5f8fb",
+      bordercolor = "#c8d8e8",
+      font        = modifyList(bc_font, list(size = 11))
+    )),
+    plot_bgcolor  = "#ffffff",
+    paper_bgcolor = "#ffffff",
+    margin = list(l = 60, r = 20, t = 75, b = 60)
+  ) |>
+  config(
+    displaylogo            = plotly_config$displaylogo,
+    modeBarButtonsToRemove = plotly_config$modeBarButtonsToRemove,
+    responsive             = plotly_config$responsive
+  )
+```
+
+## Row {height=520px}
+
+### Dashboard Downloads by App and File
+
+```{r}
+download_plot_data <- download_data_raw |>
+  mutate(
+    week = floor_date(as.Date(date), "week", week_start = 1)
+  ) |>
+  filter(week == latest_week) |>
+  summarize(total_downloads = sum(eventCount, na.rm = TRUE), .by = c(pageTitle, file_label)) |>
+  mutate(
+    app = coalesce(unname(app_abbr_map[pageTitle]), pageTitle),
+    file_clean = case_when(
+      is.na(file_label) | file_label == "" | file_label == "(not set)" ~ "Unknown File",
+      grepl("^/", file_label) ~ basename(file_label),
+      TRUE ~ file_label
+    ),
+    label = paste0(app, ": ", file_clean)
+  ) |>
+  arrange(desc(total_downloads)) |>
+  slice_head(n = 25)
+
+if (nrow(download_plot_data) > 0) {
+  avg_downloads <- mean(download_plot_data$total_downloads, na.rm = TRUE)
+  label_order  <- download_plot_data |> arrange(total_downloads) |> pull(label)
+
+  bar_colors <- unname(app_colors[download_plot_data$app])
+  bar_colors[is.na(bar_colors)] <- "#888888"
+
+  plot_ly() |>
+    add_bars(
+      data = download_plot_data,
+      x = ~total_downloads,
+      y = ~factor(label, levels = label_order),
+      orientation = "h",
+      marker = list(
+        color  = bar_colors,
+        line   = list(color = "white", width = 0.5),
+        opacity = 0.88
+      ),
+      customdata = ~pageTitle,
+      hovertemplate = paste0(
+        "<b>%{y}</b><br>",
+        "Dashboard: %{customdata}<br>",
+        "Downloads: %{x:,}<extra></extra>"
+      ),
+      showlegend = FALSE
+    ) |>
+    layout(
+      title = list(
+        text  = "<b>Total Downloads by Dashboard & File — Latest Week</b>",
+        font  = modifyList(bc_font, list(size = 15, color = "#003366"))
+      ),
+      xaxis = list(
+        title     = "",
+        tickfont  = modifyList(bc_font, list(size = 10, color = "#5c6b7a")),
+        gridcolor = "#e8ecf0",
+        zeroline  = FALSE
+      ),
+      yaxis = list(
+        title      = "",
+        automargin = TRUE,
+        tickfont   = modifyList(bc_font, list(size = 10, color = "#2d2d2d"))
+      ),
+      shapes = list(list(
+        type = "line",
+        x0 = avg_downloads, x1 = avg_downloads,
+        y0 = 0, y1 = 1,
+        xref = "x", yref = "paper",
+        line = list(color = "#fcba19", width = 1.5, dash = "dash")
+      )),
+      annotations = list(
+        list(
+          x = avg_downloads, y = 1,
+          xref = "x", yref = "paper",
+          text = paste0("Avg: ", round(avg_downloads, 1)),
+          showarrow  = FALSE,
+          xanchor    = "left",
+          bgcolor    = "rgba(255,255,255,0.85)",
+          borderpad  = 3,
+          font       = modifyList(bc_font, list(size = 10, color = "#333333"))
+        )
+      ),
+      plot_bgcolor  = "#ffffff",
+      paper_bgcolor = "#ffffff",
+      margin = list(l = 10, r = 30, t = 45, b = 30),
+      bargap = 0.3
+    ) |>
+    config(
+      displaylogo          = FALSE,
+      modeBarButtonsToRemove = list(
+        "zoom2d", "pan2d", "select2d", "lasso2d",
+        "zoomIn2d", "zoomOut2d", "autoScale2d",
+        "hoverClosestCartesian", "hoverCompareCartesian"
+      ),
+      responsive = TRUE
+    )
+} else {
+  plot_ly() |>
+    add_annotations(
+      text = "No download data available for the latest week.",
+      x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+      showarrow = FALSE,
+      font = modifyList(bc_font, list(size = 13, color = "#5c6b7a"))
+    ) |>
+    layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+}
+```
+
+# Dashboard Details {scrolling="true"}
+
+```{r details-data, include=FALSE}
+usage_summary_det  <- read_csv(file.path(OUTPUT_TABLES, "usage_summary.csv"),   show_col_types = FALSE)
+location_summary   <- read_csv(file.path(OUTPUT_TABLES, "location_summary.csv"), show_col_types = FALSE)
+device_summary     <- read_csv(file.path(OUTPUT_TABLES, "device_summary.csv"),  show_col_types = FALSE)
+browser_summary    <- read_csv(file.path(OUTPUT_TABLES, "browser_summary.csv"), show_col_types = FALSE)
+```
+
+## Row
+
+### Per-Dashboard Details
+
+Expand any dashboard below to see its recent usage stats, top visitor locations, device types, and browsers.
+
+```{r details-accordions, results="asis"}
+detail_apps <- sort(unique(usage_summary_det$pageTitle))
+
+for (app_i in detail_apps) {
+  abbr_i <- coalesce(unname(app_abbr_map[app_i]), app_i)
+
+  cat(glue('\n\n::: {{.callout-note collapse="true"}}\n## {abbr_i} \u2014 {app_i}\n\n'))
+
+  # --- Usage snapshot ---
+  u <- usage_summary_det |> filter(pageTitle == app_i)
+  engaged_min <- round(u$avg_engaged_seconds_per_user / 60, 1)
+  cat(glue(
+    "**Recent week sessions:** {scales::comma(u$recent_week_sessions)} &nbsp;|&nbsp; ",
+    "**4-wk rolling avg sessions:** {scales::comma(round(u$rolling_sessions_week, 0))} &nbsp;|&nbsp; ",
+    "**Avg engaged time/user:** {engaged_min} min\n\n"
+  ))
+
+  # --- Top locations ---
+  loc <- location_summary |>
+    filter(pageTitle == app_i) |>
+    arrange(desc(total_users)) |>
+    slice_head(n = 10) |>
+    select(Country = country, Region = region, City = city, Users = total_users)
+
+  if (nrow(loc) > 0) {
+    cat("**Top Visitor Locations**\n\n")
+    cat(knitr::kable(loc, format = "html",
+      table.attr = 'class="table table-sm table-striped" style="font-size:0.85em;"'))
+    cat("\n\n")
+  }
+
+  # --- Device breakdown ---
+  dev <- device_summary |>
+    filter(pageTitle == app_i) |>
+    arrange(desc(total_users)) |>
+    mutate(Share = scales::percent(pct_users, accuracy = 1)) |>
+    select(Device = deviceCategory, Users = total_users, Share)
+
+  if (nrow(dev) > 0) {
+    cat("**Device Breakdown**\n\n")
+    cat(knitr::kable(dev, format = "html",
+      table.attr = 'class="table table-sm" style="font-size:0.85em; width:auto;"'))
+    cat("\n\n")
+  }
+
+  # --- Browser breakdown (top 5) ---
+  brow <- browser_summary |>
+    filter(pageTitle == app_i) |>
+    arrange(desc(total_users)) |>
+    slice_head(n = 5) |>
+    mutate(Share = scales::percent(pct_users, accuracy = 1)) |>
+    select(Browser = browser, Users = total_users, Share)
+
+  if (nrow(brow) > 0) {
+    cat("**Top Browsers**\n\n")
+    cat(knitr::kable(brow, format = "html",
+      table.attr = 'class="table table-sm" style="font-size:0.85em; width:auto;"'))
+    cat("\n\n")
+  }
+
+  cat(":::\n")
+}
+```
+
+## Row
+
+### Overall Summary Statistics
+
+::: {.callout-tip collapse="true"}
+## Column Descriptions
+
+| Column | Description |
+|--------|-------------|
+| **Weekly Visits — Min / Avg / Max** | Number of sessions in a single week. Min = quietest week, Max = busiest, Avg = typical. |
+| **Time on Page — Min / Avg / Max (min)** | Total user engagement time per week in **minutes** (active foreground time from GA4). |
+| **Avg Weekly Downloads** | Average file download events per week (CSV, Excel, PDF exports). |
+:::
+
+```{r}
+visits_summary_clean <- visits_summary |>
+  mutate(
+    app_abbr = coalesce(unname(app_abbr_map[pageTitle]), pageTitle),
+    pageTitle = paste0(pageTitle, " (", app_abbr, ")")
+  ) |>
+  select(-app_abbr, -median_weekly_visits) |>
+  rename(
+    `Dashboard` = pageTitle,
+    `Visits Min` = min_weekly_visits,
+    `Visits Avg` = avg_weekly_visits,
+    `Visits Max` = max_weekly_visits,
+    `Time Min (min)` = min_time_min,
+    `Time Avg (min)` = avg_time_min,
+    `Time Max (min)` = max_time_min,
+    `Avg Weekly Downloads` = avg_weekly_downloads
+  ) |>
+  mutate(across(where(is.numeric), round, 1))
+
+datatable(
+  visits_summary_clean,
+  options = list(pageLength = 11, dom = 't', scrollX = TRUE)
+)
+```
+
+# About
+
+### About This Dashboard
+
+**Maintainer / Contact**: Data Science Team
+
+**Data Source**: Data is pulled automatically via the Google Analytics 4 (GA4) API using a scheduled R script.
+
+**How we build this**: This dashboard was created using [Quarto Dashboards](https://quarto.org/docs/dashboards/) in R, leveraging libraries like `ggplot2`, `plotly`, and `googleAnalyticsR`. The source code for extracting data and rendering the tool is open source!
+
+**Source Code**: Find the source code on our [GitHub Repository](https://github.com/bcgov/shinyapps-webtraffic-monitoring).

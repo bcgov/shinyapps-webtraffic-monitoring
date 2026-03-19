@@ -47,10 +47,22 @@ download_data_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
   metrics = c("eventCount"),
-  dimensions = c("pageTitle", "pagePath", "eventName", "fileName"),
+  dimensions = c(
+    "date",
+    "pageTitle",
+    "pagePath",
+    "eventName",
+    "fileName",
+    "customEvent:event_label"
+  ),
   dim_filters = ga_data_filter(eventName == "file_download"),
   limit = -1
-)
+) |>
+  rename(event_label = `customEvent:event_label`) |>
+  mutate(
+    file_label = coalesce(na_if(fileName, ""), na_if(event_label, ""))
+  )
+
 
 # Save raw data to an RData file so we don't have to hit the API repeatedly while coding
 save(
