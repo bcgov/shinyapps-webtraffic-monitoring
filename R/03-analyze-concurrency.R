@@ -13,7 +13,7 @@ all_concurrency <- readRDS(file.path(DATA_RAW, "shinyapps_concurrency.rds"))
 # Summary stats per app + interval, rename apps to match GA data
 concurrency_summary <- all_concurrency |>
   mutate(
-    app_name = case_match(
+    app_name = recode_values(
       app_name,
       "so_data_viewer" ~ "Student Outcomes",
       "popApp" ~ "popApp",
@@ -26,7 +26,8 @@ concurrency_summary <- all_concurrency |>
       "interprovincial_migration_bc" ~ "Interprovincial Migration",
       "CountryTradeApp" ~ "Country Trade Profiles",
       "RetailSalesApp" ~ "BC Retail Sales",
-      .default = app_name
+      default = app_name,
+      unmatched = "default"
     )
   ) |>
   summarize(
