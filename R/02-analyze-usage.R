@@ -245,6 +245,45 @@ usage_comparison <- usage_summary |>
   ) |>
   arrange(rank_recent_week_users)
 
+# Min/Max weekly visits, time, and downloads summary table
+# Aggregate downloads to attach to the summary table
+downloads_by_app <- download_summary |>
+  summarize(
+    total_downloads = sum(total_downloads, na.rm = TRUE),
+    .by = pageTitle
+  )
+
+visits_minmax_summary <- weekly_usage |>
+  summarize(
+    min_weekly_visits = min(total_sessions, na.rm = TRUE),
+    median_weekly_visits = median(total_sessions, na.rm = TRUE),
+    avg_weekly_visits = round(mean(total_sessions, na.rm = TRUE), 1),
+    max_weekly_visits = max(total_sessions, na.rm = TRUE),
+
+    min_time_min = round(
+      min(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+    avg_time_min = round(
+      mean(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+    max_time_min = round(
+      max(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      1
+    ),
+
+    weeks_active = n(),
+    .by = pageTitle
+  ) |>
+  left_join(downloads_by_app, by = "pageTitle") |>
+  mutate(
+    total_downloads = replace_na(total_downloads, 0),
+    avg_weekly_downloads = round(total_downloads / weeks_active, 1)
+  ) |>
+  select(-weeks_active, -total_downloads) |>
+  arrange(desc(max_weekly_visits))
+
 
 #  OUTPUT LISTS
 summary_tables <- list(
@@ -253,7 +292,8 @@ summary_tables <- list(
   tech_summary = tech_summary,
   download_summary = download_summary,
   usage_comparison = usage_comparison,
-  weekly_usage = weekly_usage
+  weekly_usage = weekly_usage,
+  visits_minmax_summary = visits_minmax_summary
 )
 
 tech_breakdowns <- list(
@@ -265,12 +305,12 @@ tech_breakdowns <- list(
 #  WRITE SUMMARY CSVs
 # comment out the imap loops below to avoid overwriting CSVs during development
 
-# imap(summary_tables, \(x, name) {
-#   if (!is.null(x)) {
-#     write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-#   }
-# })
+imap(summary_tables, \(x, name) {
+  if (!is.null(x)) {
+    write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+  }
+})
 
-# imap(tech_breakdowns, \(x, name) {
-#   write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
-# })
+imap(tech_breakdowns, \(x, name) {
+  write_csv(x, file = file.path(OUTPUT_TABLES, paste0(name, ".csv")))
+})
