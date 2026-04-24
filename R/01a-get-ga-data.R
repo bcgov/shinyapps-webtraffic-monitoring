@@ -17,21 +17,22 @@ daily_usage_raw <- ga_data(
   limit = -1
 )
 
-# getch user location data
+# geo
 geo_data_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
   metrics = c("totalUsers"),
-  dimensions = c("pageTitle", "pagePath", "country", "city", "region"),
+  dimensions = c("date", "pageTitle", "pagePath", "country", "city", "region"),
   limit = -1
 )
 
-# get tech specs
+# tech
 tech_data_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
   metrics = c("totalUsers"),
   dimensions = c(
+    "date",
     "pageTitle",
     "pagePath",
     "deviceCategory",
