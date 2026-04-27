@@ -1,4 +1,4 @@
-# Purpose: Load libraries and authenticate with Google Analytics and shinyapps.io
+# Purpose: Load libraries and authenticate with Google Analytics + shinyapps.io
 
 #  Packages
 required_packages <- c(
@@ -20,18 +20,14 @@ required_packages <- c(
 # Check for missing packages, and install if necessary
 missing_packages <- setdiff(required_packages, rownames(installed.packages()))
 if (length(missing_packages) > 0) {
-  install.packages(missing_packages, dependencies = TRUE)
-  missing_after <- setdiff(required_packages, rownames(installed.packages()))
-  if (length(missing_after) > 0) {
-    stop(
-      sprintf(
-        "Failed to install packages: %s\nInstall them manually with install.packages(c(%s))",
-        paste(missing_after, collapse = ", "),
-        paste(sprintf('"%s"', missing_after), collapse = ", ")
-      ),
-      call. = FALSE
-    )
-  }
+  stop(
+    sprintf(
+      "Missing packages: %s\nInstall them with install.packages(c(%s))",
+      paste(missing_packages, collapse = ", "),
+      paste(sprintf('"%s"', missing_packages), collapse = ", ")
+    ),
+    call. = FALSE
+  )
 }
 
 library(googleAnalyticsR)
@@ -50,8 +46,6 @@ library(flexdashboard)
 
 # File paths (LAN) setup
 LAN_FOLDER <- use_network_path()
-# if 'Error:! There has been a problem. Are you sure you are connected to the VPN?'
-# connect to VPN and manually double click the 'network drive' in 'This PC' to ensure it's connected (green), then run this code again
 
 PROJECT_ROOT <- glue(
   "{LAN_FOLDER}/0. Misc/Data Science Tooling/web-hosting-and-dashboards/shinyapps_webtraffic_monitoring"
@@ -102,7 +96,7 @@ if (nzchar(extra_renviron) && file.exists(extra_renviron)) {
 #  Configuration (prefer env vars)
 GA_PROPERTY_ID <- optional_env("GA_PROPERTY_ID", default = "394480605")
 GA_DATE_START <- optional_env("GA_DATE_START", default = "2024-01-01")
-GA_DATE_END <- optional_env("GA_DATE_END", default = as.character(Sys.Date() - 1)) # default to yesterday to avoid partial current-day data
+GA_DATE_END <- optional_env("GA_DATE_END", default = as.character(Sys.Date()))
 
 #  GA Service Account Auth
 GA_SERVICE_EMAIL <- require_env("GA_SERVICE_EMAIL")
