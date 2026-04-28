@@ -8,12 +8,42 @@ daily_usage_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
   metrics = c(
+    "totalUsers", # The number of distinct users who have logged at least one event, regardless of whether the site or app was in use when that event was logged.
+    "activeUsers", # The number of distinct users who visited your site or app.
+    "sessions", # The number of sessions that began on your site or app (event triggered: session_start).
+    "averageSessionDuration", # The average duration (in seconds) of users` sessions.
+    "userEngagementDuration" # The total amount of time (in seconds) your website or app was in the foreground of users` devices.
+  ),
+  dimensions = c("date", "pageTitle", "pagePath"), # Page title:The web page titles used on your site. Page path: The portion of the URL between the hostname and query string for web pages visited.
+  limit = -1
+)
+# totalUsers  : The "Raw Headcount". Counts any device that triggered ANY event, 
+#               including background pings or immediate bounces.
+# activeUsers : The "Engaged Headcount". The primary KPI for reporting. Counts 
+#               users who had an engaged session (lasted >10 seconds, viewed 2+ 
+#               pages/screens, or triggered a key event).
+# Note: totalUsers will always be >= activeUsers. The difference between the 
+# two represents background noise and "bounce" traffic.
+
+
+# Determine the end date for the last fully completed ISO week (Monday to Sunday)
+# %u returns 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+# Subtracting this from GA_DATE_END will always roll back to the most recent Sunday
+day_of_week_iso <- as.integer(format(as.Date(GA_DATE_END), "%u")) 
+end_date_weekly <- as.character(as.Date(GA_DATE_END) - day_of_week_iso)
+
+# Get weekly usage data (for accurate weekly unique users)
+weekly_usage_raw <- ga_data(
+  propertyId = GA_PROPERTY_ID,
+  # USE end_date_weekly HERE INSTEAD OF GA_DATE_END
+  date_range = c(GA_DATE_START, end_date_weekly),
+  metrics = c(
     "totalUsers",
+    "activeUsers",
     "sessions",
-    "averageSessionDuration",
     "userEngagementDuration"
   ),
-  dimensions = c("date", "pageTitle", "pagePath"),
+  dimensions = c("isoYearIsoWeek", "pageTitle", "pagePath"), # ISO week of ISO year: The combined values of isoWeek and isoYear. where each week starts on Monday and ends on Sunday.
   limit = -1
 )
 
@@ -21,7 +51,7 @@ daily_usage_raw <- ga_data(
 geo_data_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
-  metrics = c("totalUsers"),
+  metrics = c("totalUsers", "activeUsers"),
   dimensions = c("date", "pageTitle", "pagePath", "country", "city", "region"),
   limit = -1
 )
@@ -30,7 +60,7 @@ geo_data_raw <- ga_data(
 tech_data_raw <- ga_data(
   propertyId = GA_PROPERTY_ID,
   date_range = c(GA_DATE_START, GA_DATE_END),
-  metrics = c("totalUsers"),
+  metrics = c("totalUsers", "activeUsers"),
   dimensions = c(
     "date",
     "pageTitle",
@@ -68,6 +98,7 @@ download_data_raw <- ga_data(
 # Save raw data to an RData file so we don't have to hit the API repeatedly while coding
 save(
   daily_usage_raw,
+  weekly_usage_raw,
   geo_data_raw,
   tech_data_raw,
   download_data_raw,
@@ -76,6 +107,7 @@ save(
 
 # Also save each table as .rds for simpler reuse
 saveRDS(daily_usage_raw, file = file.path(DATA_RAW, "daily_usage_raw.rds"))
+saveRDS(weekly_usage_raw, file = file.path(DATA_RAW, "weekly_usage_raw.rds"))
 saveRDS(geo_data_raw, file = file.path(DATA_RAW, "geo_data_raw.rds"))
 saveRDS(tech_data_raw, file = file.path(DATA_RAW, "tech_data_raw.rds"))
 saveRDS(download_data_raw, file = file.path(DATA_RAW, "download_data_raw.rds"))
