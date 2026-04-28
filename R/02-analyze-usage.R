@@ -35,14 +35,16 @@ daily_usage_raw <- daily_usage_raw |>
 # - totalUsers: Unique users for that app on that date (device/cookie-based).
 #              Caution: do NOT sum across days to get weekly/monthly unique users.
 #              Summing across days yields “total daily uniques,” which can double-count.
+# - activeUsers: Unique users with an engaged session on that date. Engaged sessions last >10s,
+#                have 2+ pageviews, or trigger key events. This is the primary KPI for reporting.
 # - sessions: Number of sessions (visits) for that app on that date.
-#            A session ends after ~30 minutes of inactivity; returning later counts again.
+#             A session ends after ~30 minutes of inactivity; returning later counts again.
 # - averageSessionDuration: Mean session length in seconds.
 #                           GA4 can include background time; may overstate active use.
 # - userEngagementDuration: Total engaged time in seconds for that app on that date.
 #                           This is a SUM, not an average. It counts foreground time.
 #                           To estimate average engaged time per user:
-#                           avg_engaged_seconds = userEngagementDuration / totalUsers
+#                           avg_engaged_seconds = userEngagementDuration / Users
 
 geo_data_raw <- geo_data_raw |>
   filter(pageTitle %in% apps_keep)
@@ -53,44 +55,41 @@ tech_data_raw <- tech_data_raw |>
 download_data_raw <- download_data_raw |>
   filter(pageTitle %in% apps_keep)
 
-
-# 1. CLEANING
-# Add week/month buckets for rollups; keep original daily granularity
-daily_usage_clean <- daily_usage_raw |>
-  mutate(
-    date = as.Date(date),
-    week = floor_date(date, unit = "week", week_start = 1),
-    month = floor_date(date, unit = "month")
-  )
-
 # Rolling average windows (adjust as needed)
 rolling_week_window <- 4
 rolling_month_window <- 3
 
-# 2. WEEKLY + MONTHLY ROLLUPS
-# Weekly: totals for usage, weighted durations per app-week
-weekly_usage <- daily_usage_clean |>
+weekly_usage_raw <- weekly_usage_raw |>
+  filter(pageTitle %in% apps_keep)
+
+# Summarize weekly data
+weekly_usage <- weekly_usage_raw |>
   summarize(
-    total_daily_users = sum(totalUsers, na.rm = TRUE),
+    total_weekly_active_users = sum(activeUsers, na.rm = TRUE), # Used sum instead of max here because pagePath dimension can cause users to be split across rows; summing gives total unique users for the week
     total_sessions = sum(sessions, na.rm = TRUE),
-
-    avg_session_duration = weighted.mean(
-      averageSessionDuration,
-      w = sessions,
-      na.rm = TRUE
-    ),
-
-    # Avg engaged seconds per user (weekly)
-    avg_engaged_seconds_per_user = sum(userEngagementDuration, na.rm = TRUE) /
-      pmax(sum(totalUsers, na.rm = TRUE), 1),
-
-    .by = c(pageTitle, week)
+    total_engaged_seconds = sum(userEngagementDuration, na.rm = TRUE),
+    .by = c(pageTitle, isoYearIsoWeek)
   ) |>
-  arrange(pageTitle, week) |>
+  mutate(
+    avg_engaged_seconds_per_user = total_engaged_seconds /
+      pmax(total_weekly_active_users, 1)
+  ) |>
+  select(-total_engaged_seconds) |>
+  complete(
+    pageTitle = apps_keep,
+    isoYearIsoWeek,
+    fill = list(
+      total_weekly_active_users = 0,
+      total_sessions = 0,
+      avg_engaged_seconds_per_user = 0
+    )
+  ) |>
+  arrange(pageTitle, isoYearIsoWeek) |>
+  # Add rolling averages
   group_by(pageTitle) |>
   mutate(
     rolling_users_week = slide_dbl(
-      total_daily_users,
+      total_weekly_active_users,
       mean,
       .before = rolling_week_window - 1,
       .complete = TRUE
@@ -104,10 +103,21 @@ weekly_usage <- daily_usage_clean |>
   ) |>
   ungroup()
 
+# 1. CLEANING
+# Add week/month buckets for rollups; keep original daily granularity
+daily_usage_clean <- daily_usage_raw |>
+  mutate(
+    date = as.Date(date),
+    week = floor_date(date, unit = "week", week_start = 1),
+    # Format directly to YYYY-MM string here:
+    month = format(date, "%Y-%m")
+  )
+
+# 2. MONTHLY ROLLUPS
 # Monthly: totals for usage, weighted durations per app-month
 monthly_usage <- daily_usage_clean |>
   summarize(
-    total_daily_users = sum(totalUsers, na.rm = TRUE),
+    total_daily_active_users = sum(activeUsers, na.rm = TRUE),
     total_sessions = sum(sessions, na.rm = TRUE),
 
     avg_session_duration = weighted.mean(
@@ -118,15 +128,25 @@ monthly_usage <- daily_usage_clean |>
 
     # Avg engaged seconds per user (monthly)
     avg_engaged_seconds_per_user = sum(userEngagementDuration, na.rm = TRUE) /
-      pmax(sum(totalUsers, na.rm = TRUE), 1),
+      pmax(sum(activeUsers, na.rm = TRUE), 1),
 
     .by = c(pageTitle, month)
+  ) |>
+  complete(
+    pageTitle = apps_keep,
+    month,
+    fill = list(
+      total_daily_active_users = 0,
+      total_sessions = 0,
+      avg_session_duration = 0,
+      avg_engaged_seconds_per_user = 0
+    )
   ) |>
   arrange(pageTitle, month) |>
   group_by(pageTitle) |>
   mutate(
     rolling_users_month = slide_dbl(
-      total_daily_users,
+      total_daily_active_users,
       mean,
       .before = rolling_month_window - 1,
       .complete = TRUE
@@ -142,23 +162,31 @@ monthly_usage <- daily_usage_clean |>
 
 # 3. SUMMARY TABLES (per app)
 # Latest week/month stats + rolling averages in one row per app
+latest_week <- max(weekly_usage$isoYearIsoWeek, na.rm = TRUE)
+
+# Use last completed calendar month relative to today
+# Calculate last completed month, then format it as a string to match the data
+latest_month <- format(
+  floor_date(Sys.Date(), unit = "month") %m-% months(1),
+  "%Y-%m"
+)
+
 usage_summary <- weekly_usage |>
-  filter(week == max(week), .by = pageTitle) |>
+  filter(isoYearIsoWeek == latest_week) |>
   select(
     pageTitle,
-    recent_week_users = total_daily_users,
+    recent_week_users = total_weekly_active_users,
     recent_week_sessions = total_sessions,
     rolling_users_week,
     rolling_sessions_week,
-    avg_session_duration,
     avg_engaged_seconds_per_user
   ) |>
   left_join(
     monthly_usage |>
-      filter(month == max(month), .by = pageTitle) |>
+      filter(month == latest_month) |>
       select(
         pageTitle,
-        recent_month_users = total_daily_users,
+        recent_month_users = total_daily_active_users,
         recent_month_sessions = total_sessions,
         rolling_users_month,
         rolling_sessions_month
@@ -169,10 +197,10 @@ usage_summary <- weekly_usage |>
 # Top 10 locations per app by total users
 location_summary <- geo_data_raw |>
   summarize(
-    total_users = sum(totalUsers, na.rm = TRUE),
+    total_active_users = sum(activeUsers, na.rm = TRUE),
     .by = c(pageTitle, country, region, city)
   ) |>
-  arrange(pageTitle, desc(total_users)) |>
+  arrange(pageTitle, desc(total_active_users)) |>
   group_by(pageTitle) |>
   slice_head(n = 10) |>
   ungroup()
@@ -180,44 +208,44 @@ location_summary <- geo_data_raw |>
 # Tech profile per app (device/OS/browser)
 tech_summary <- tech_data_raw |>
   summarize(
-    total_users = sum(totalUsers, na.rm = TRUE),
+    total_active_users = sum(activeUsers, na.rm = TRUE),
     .by = c(pageTitle, deviceCategory, operatingSystem, browser)
   ) |>
-  arrange(pageTitle, desc(total_users))
+  arrange(pageTitle, desc(total_active_users))
 
 # Tech profile summaries (per app) with percentages
 device_summary <- tech_data_raw |>
   summarize(
-    total_users = sum(totalUsers, na.rm = TRUE),
+    total_active_users = sum(activeUsers, na.rm = TRUE),
     .by = c(pageTitle, deviceCategory)
   ) |>
   mutate(
-    pct_users = total_users / sum(total_users),
+    pct_users = total_active_users / sum(total_active_users),
     .by = pageTitle
   ) |>
-  arrange(pageTitle, desc(total_users))
+  arrange(pageTitle, desc(total_active_users))
 
 os_summary <- tech_data_raw |>
   summarize(
-    total_users = sum(totalUsers, na.rm = TRUE),
+    total_active_users = sum(activeUsers, na.rm = TRUE),
     .by = c(pageTitle, operatingSystem)
   ) |>
   mutate(
-    pct_users = total_users / sum(total_users),
+    pct_users = total_active_users / sum(total_active_users),
     .by = pageTitle
   ) |>
-  arrange(pageTitle, desc(total_users))
+  arrange(pageTitle, desc(total_active_users))
 
 browser_summary <- tech_data_raw |>
   summarize(
-    total_users = sum(totalUsers, na.rm = TRUE),
+    total_active_users = sum(activeUsers, na.rm = TRUE),
     .by = c(pageTitle, browser)
   ) |>
   mutate(
-    pct_users = total_users / sum(total_users),
+    pct_users = total_active_users / sum(total_active_users),
     .by = pageTitle
   ) |>
-  arrange(pageTitle, desc(total_users))
+  arrange(pageTitle, desc(total_active_users))
 
 
 # Downloads per app and file
@@ -235,7 +263,7 @@ usage_comparison <- usage_summary |>
   mutate(
     share_recent_week_users = recent_week_users /
       sum(recent_week_users, na.rm = TRUE),
-    rank_recent_week_users = min_rank(desc(recent_week_users))
+    rank_recent_week_users = min_rank(desc(replace_na(recent_week_users, 0)))
   ) |>
   select(
     pageTitle,
@@ -255,17 +283,22 @@ downloads_by_app <- download_summary |>
 
 visits_minmax_summary <- weekly_usage |>
   summarize(
-    min_weekly_visits = min(total_sessions, na.rm = TRUE),
-    median_weekly_visits = median(total_sessions, na.rm = TRUE),
+    # Use only active weeks for visits min/median to avoid 0-padding deflation
+    min_weekly_visits = min(total_sessions[total_sessions > 0], na.rm = TRUE),
+    median_weekly_visits = median(
+      total_sessions[total_sessions > 0],
+      na.rm = TRUE
+    ),
     avg_weekly_visits = round(mean(total_sessions, na.rm = TRUE), 1),
     max_weekly_visits = max(total_sessions, na.rm = TRUE),
 
+    # Ignore 0s when determining minimum active time
     min_time_min = round(
-      min(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      min(avg_engaged_seconds_per_user[total_sessions > 0], na.rm = TRUE) / 60,
       1
     ),
     avg_time_min = round(
-      mean(avg_engaged_seconds_per_user, na.rm = TRUE) / 60,
+      mean(avg_engaged_seconds_per_user[total_sessions > 0], na.rm = TRUE) / 60,
       1
     ),
     max_time_min = round(
@@ -273,13 +306,24 @@ visits_minmax_summary <- weekly_usage |>
       1
     ),
 
-    weeks_active = n(),
+    # Only count weeks where the app was actually used
+    weeks_active = sum(total_sessions > 0, na.rm = TRUE),
     .by = pageTitle
   ) |>
   left_join(downloads_by_app, by = "pageTitle") |>
   mutate(
     total_downloads = replace_na(total_downloads, 0),
-    avg_weekly_downloads = round(total_downloads / weeks_active, 1)
+    avg_weekly_downloads = round(total_downloads / pmax(weeks_active, 1), 1),
+
+    # Clean up Inf, NA, and NaN values if an app had zero active weeks
+    min_weekly_visits = if_else(
+      is.infinite(min_weekly_visits),
+      0,
+      min_weekly_visits
+    ),
+    min_time_min = if_else(is.infinite(min_time_min), 0, min_time_min),
+    median_weekly_visits = replace_na(median_weekly_visits, 0),
+    avg_time_min = if_else(is.nan(avg_time_min), 0, avg_time_min)
   ) |>
   select(-weeks_active, -total_downloads) |>
   arrange(desc(max_weekly_visits))
