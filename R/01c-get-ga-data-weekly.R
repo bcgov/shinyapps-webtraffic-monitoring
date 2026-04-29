@@ -1,6 +1,6 @@
 # Purpose: Weekly Update. Download raw data from GA4 and save it locally (caching)
 
-# Purpose: Weekly incremental GA4 raw-data update into raw data files. 
+# Purpose: Weekly incremental GA4 raw-data update into raw data files.
 source("R/00-setup.R")
 
 # set end date to yesterday by default to avoid partial data for the current day
@@ -48,6 +48,8 @@ daily_new <- if (as.Date(daily_start) <= as.Date(end_date)) {
       "totalUsers",
       "activeUsers",
       "sessions",
+      "engagedSessions",
+      "engagementRate",
       "averageSessionDuration",
       "userEngagementDuration"
     ),
@@ -68,9 +70,9 @@ daily_usage_raw <- append_distinct(
 weekly_usage_raw <- readRDS(file.path(DATA_RAW, "weekly_usage_raw.rds"))
 old_weekly_rows <- nrow(weekly_usage_raw)
 
-# Note: Because 'daily_start' could land mid-week, sending it directly to the API 
-# would result in GA4 calculating distinct users for only a partial week. 
-# Subtracting 7 days ensures the date range perfectly swallows the target Monday-Sunday 
+# Note: Because 'daily_start' could land mid-week, sending it directly to the API
+# would result in GA4 calculating distinct users for only a partial week.
+# Subtracting 7 days ensures the date range perfectly swallows the target Monday-Sunday
 # period, forcing GA4 to calculate a true 7-day unique user count.
 weekly_start <- as.character(as.Date(daily_start) - 7)
 
@@ -78,7 +80,15 @@ weekly_new <- if (as.Date(weekly_start) <= as.Date(end_date_weekly)) {
   ga_data(
     propertyId = GA_PROPERTY_ID,
     date_range = c(weekly_start, end_date_weekly),
-    metrics = c("totalUsers", "activeUsers", "sessions", "userEngagementDuration"),
+    metrics = c(
+      "totalUsers",
+      "activeUsers",
+      "sessions",
+      "engagedSessions",
+      "engagementRate",
+      "averageSessionDuration",
+      "userEngagementDuration"
+    ),
     dimensions = c("isoYearIsoWeek", "pageTitle", "pagePath"),
     limit = -1
   )
@@ -189,15 +199,15 @@ saveRDS(geo_data_raw, file = file.path(DATA_RAW, "geo_data_raw.rds"))
 saveRDS(tech_data_raw, file = file.path(DATA_RAW, "tech_data_raw.rds"))
 saveRDS(download_data_raw, file = file.path(DATA_RAW, "download_data_raw.rds"))
 
-# keep combined RData file in sync
-save(
-  daily_usage_raw,
-  weekly_usage_raw,
-  geo_data_raw,
-  tech_data_raw,
-  download_data_raw,
-  file = file.path(DATA_RAW, "ga_raw_data.RData")
-)
+# # keep combined RData file in sync
+# save(
+#   daily_usage_raw,
+#   weekly_usage_raw,
+#   geo_data_raw,
+#   tech_data_raw,
+#   download_data_raw,
+#   file = file.path(DATA_RAW, "ga_raw_data.RData")
+# )
 
 # run summary, check how many new rows were added for each dataset, and print a summary table
 tibble(
