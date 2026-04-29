@@ -73,16 +73,18 @@ weekly_usage <- weekly_usage |>
   ) |>
   left_join(week_date_map, by = "isoYearIsoWeek") # Attach the real Date object for plotting
 
+# For value boxes: calculate latest full week visits
 latest_week <- max(weekly_usage$isoYearIsoWeek, na.rm = TRUE)
 latest_week_data <- weekly_usage |> filter(isoYearIsoWeek == latest_week)
 latest_week_date <- latest_week_data$week_date[1] # Extract Date for valuebox subtitle
+latest_visits <- sum(latest_week_data$total_engaged_sessions, na.rm = TRUE) # change to total_sessions if you want raw visits instead of engaged sessions
 
-latest_visits <- sum(latest_week_data$total_sessions, na.rm = TRUE)
-
+# visits from the previous week for comparison (the week immediately before the latest full week)
 previous_week <- max(weekly_usage$isoYearIsoWeek[weekly_usage$isoYearIsoWeek < latest_week], na.rm = TRUE)
 previous_week_data <- weekly_usage |> filter(isoYearIsoWeek == previous_week)
-prev_visits <- sum(previous_week_data$total_sessions, na.rm = TRUE)
+prev_visits <- sum(previous_week_data$total_engaged_sessions, na.rm = TRUE) # change to total_sessions if you want raw visits instead of engaged sessions
 
+# Calculate percent change and absolute change for value boxes
 pct_change <- if (prev_visits > 0) {
   round((latest_visits - prev_visits) / prev_visits * 100, 1)
 } else {
@@ -131,42 +133,21 @@ plotly_config <- list(
 
 ## Row {height=210px}
 
-```{r}
-#| content: valuebox
-#| title: "Total Visits Across All Dashboards, Last Full Week"
-list(
-  color = "primary",
-  value = comma(latest_visits),
-  subtitle = paste("Week of", format(latest_week_date, "%b %d, %Y"))
-)
-```
+::: {.valuebox color="primary" title="Total Visits Across All Dashboards (Week of `r format(latest_week_date, '%b %d, %Y')`)"}
+`r comma(latest_visits)`
+:::
 
-```{r}
-#| content: valuebox
-#| title: "Change in Visits from Previous Week Across All Dashboards"
-list(
-  color = if (abs_change >= 0) "success" else "warning",
-  value = paste0(if (abs_change > 0) "+" else "", comma(abs_change))
-)
-```
+::: {.valuebox color="`r if (abs_change >= 0) 'success' else 'warning'`" title="Change in Visits (Compared to week of `r format(latest_week_date - 7, '%b %d, %Y')`)"}
+`r paste0(if (abs_change > 0) "+" else "", comma(abs_change))`
+:::
 
-```{r}
-#| content: valuebox
-#| title: "Percent Change from Previous Week"
-list(
-  color = if (pct_change >= 0) "success" else "warning",
-  value = if (!is.na(pct_change)) paste0(if (pct_change > 0) "+" else "", pct_change, "%") else "NA"
-)
-```
+::: {.valuebox color="`r if (pct_change >= 0) 'success' else 'warning'`" title="Percent Change from the week of `r format(latest_week_date - 7, '%b %d, %Y')`"}
+`r if (!is.na(pct_change)) paste0(if (pct_change > 0) "+" else "", pct_change, "%") else "NA"`
+:::
 
-```{r}
-#| content: valuebox
-#| title: "Total Downloads Across All Dashboards, Last Full Week"
-list(
-  color = "info",
-  value = comma(downloads_val)
-)
-```
+::: {.valuebox color="info" title="Total Downloads Across All Dashboards (Week of `r format(latest_week_date, '%b %d, %Y')`)"}
+`r comma(downloads_val)`
+:::
 
 ## Row {height=500px}
 
@@ -189,7 +170,7 @@ trend_traces <- lapply(trend_apps, function(app_i) {
   d <- trend_data |> filter(app_abbr == app_i) |> arrange(week_date)
   list(
     x             = d$week_date,
-    y             = d$total_sessions,
+    y             = d$total_engaged_sessions,
     type          = "scatter",
     mode          = "lines",
     name          = app_i,
