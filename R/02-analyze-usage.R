@@ -2,14 +2,15 @@
 
 source("R/00-setup.R")
 
-# Load the data we fetched in 01a-get-ga-data.R
-load(file.path(DATA_RAW, "ga_raw_data.RData"))
+# # Load the data we fetched in 01a-get-ga-data.R
+# load(file.path(DATA_RAW, "ga_raw_data.RData"))
 
 # load rds files if you want to work with individual tables:
-# daily_usage_raw <- readRDS(file.path(DATA_RAW, "daily_usage_raw.rds"))
-# geo_data_raw <- readRDS(file.path(DATA_RAW, "geo_data_raw.rds"))
-# tech_data_raw <- readRDS(file.path(DATA_RAW, "tech_data_raw.rds"))
-# download_data_raw <- readRDS(file.path(DATA_RAW, "download_data_raw.rds"))
+daily_usage_raw <- readRDS(file.path(DATA_RAW, "daily_usage_raw.rds"))
+weekly_usage_raw <- readRDS(file.path(DATA_RAW, "weekly_usage_raw.rds"))
+geo_data_raw <- readRDS(file.path(DATA_RAW, "geo_data_raw.rds"))
+tech_data_raw <- readRDS(file.path(DATA_RAW, "tech_data_raw.rds"))
+download_data_raw <- readRDS(file.path(DATA_RAW, "download_data_raw.rds"))
 
 # Only 11 apps are kept since other apps are archived or private
 apps_keep <- c(
@@ -39,6 +40,8 @@ daily_usage_raw <- daily_usage_raw |>
 #                have 2+ pageviews, or trigger key events. This is the primary KPI for reporting.
 # - sessions: Number of sessions (visits) for that app on that date.
 #             A session ends after ~30 minutes of inactivity; returning later counts again.
+# - engagedSessions: Number of sessions that were "engaged" (lasted >10s, had 2+ pageviews, or triggered key events).
+# - engagementRate: Percentage of sessions that were engaged (engagedSessions / sessions).
 # - averageSessionDuration: Mean session length in seconds.
 #                           GA4 can include background time; may overstate active use.
 # - userEngagementDuration: Total engaged time in seconds for that app on that date.
@@ -67,6 +70,7 @@ weekly_usage <- weekly_usage_raw |>
   summarize(
     total_weekly_active_users = sum(activeUsers, na.rm = TRUE), # Used sum instead of max here because pagePath dimension can cause users to be split across rows; summing gives total unique users for the week
     total_sessions = sum(sessions, na.rm = TRUE),
+    total_engaged_sessions = sum(engagedSessions, na.rm = TRUE),
     total_engaged_seconds = sum(userEngagementDuration, na.rm = TRUE),
     .by = c(pageTitle, isoYearIsoWeek)
   ) |>
@@ -81,6 +85,7 @@ weekly_usage <- weekly_usage_raw |>
     fill = list(
       total_weekly_active_users = 0,
       total_sessions = 0,
+      total_engaged_sessions = 0,
       avg_engaged_seconds_per_user = 0
     )
   ) |>
@@ -99,11 +104,16 @@ weekly_usage <- weekly_usage_raw |>
       mean,
       .before = rolling_week_window - 1,
       .complete = TRUE
+    ),
+    rolling_engaged_sessions_week = slide_dbl(
+      total_engaged_sessions,
+      mean,
+      .before = rolling_week_window - 1,
+      .complete = TRUE
     )
   ) |>
   ungroup()
 
-# 1. CLEANING
 # Add week/month buckets for rollups; keep original daily granularity
 daily_usage_clean <- daily_usage_raw |>
   mutate(
@@ -113,13 +123,13 @@ daily_usage_clean <- daily_usage_raw |>
     month = format(date, "%Y-%m")
   )
 
-# 2. MONTHLY ROLLUPS
+# MONTHLY ROLLUPS
 # Monthly: totals for usage, weighted durations per app-month
 monthly_usage <- daily_usage_clean |>
   summarize(
     total_daily_active_users = sum(activeUsers, na.rm = TRUE),
     total_sessions = sum(sessions, na.rm = TRUE),
-
+    total_engaged_sessions = sum(engagedSessions, na.rm = TRUE),
     avg_session_duration = weighted.mean(
       averageSessionDuration,
       w = sessions,
@@ -138,6 +148,7 @@ monthly_usage <- daily_usage_clean |>
     fill = list(
       total_daily_active_users = 0,
       total_sessions = 0,
+      total_engaged_sessions = 0,
       avg_session_duration = 0,
       avg_engaged_seconds_per_user = 0
     )
@@ -156,11 +167,17 @@ monthly_usage <- daily_usage_clean |>
       mean,
       .before = rolling_month_window - 1,
       .complete = TRUE
+    ),
+    rolling_engaged_sessions_month = slide_dbl(
+      total_engaged_sessions,
+      mean,
+      .before = rolling_month_window - 1,
+      .complete = TRUE
     )
   ) |>
   ungroup()
 
-# 3. SUMMARY TABLES (per app)
+# SUMMARY TABLES (per app)
 # Latest week/month stats + rolling averages in one row per app
 latest_week <- max(weekly_usage$isoYearIsoWeek, na.rm = TRUE)
 
@@ -177,8 +194,10 @@ usage_summary <- weekly_usage |>
     pageTitle,
     recent_week_users = total_weekly_active_users,
     recent_week_sessions = total_sessions,
+    recent_week_engaged_sessions = total_engaged_sessions,
     rolling_users_week,
     rolling_sessions_week,
+    rolling_engaged_sessions_week,
     avg_engaged_seconds_per_user
   ) |>
   left_join(
@@ -188,8 +207,10 @@ usage_summary <- weekly_usage |>
         pageTitle,
         recent_month_users = total_daily_active_users,
         recent_month_sessions = total_sessions,
+        recent_month_engaged_sessions = total_engaged_sessions,
         rolling_users_month,
-        rolling_sessions_month
+        rolling_sessions_month,
+        rolling_engaged_sessions_month
       ),
     by = "pageTitle"
   )
@@ -283,7 +304,7 @@ downloads_by_app <- download_summary |>
 
 visits_minmax_summary <- weekly_usage |>
   summarize(
-    # Use only active weeks for visits min/median to avoid 0-padding deflation
+    # raw visits metrics
     min_weekly_visits = min(total_sessions[total_sessions > 0], na.rm = TRUE),
     median_weekly_visits = median(
       total_sessions[total_sessions > 0],
@@ -291,6 +312,15 @@ visits_minmax_summary <- weekly_usage |>
     ),
     avg_weekly_visits = round(mean(total_sessions, na.rm = TRUE), 1),
     max_weekly_visits = max(total_sessions, na.rm = TRUE),
+
+    # engaged visits metrics
+    min_weekly_visits_engaged = min(total_engaged_sessions[total_engaged_sessions > 0], na.rm = TRUE),
+    median_weekly_visits_engaged = median(
+      total_engaged_sessions[total_engaged_sessions > 0],
+      na.rm = TRUE
+    ),
+    avg_weekly_visits_engaged = round(mean(total_engaged_sessions, na.rm = TRUE), 1),
+    max_weekly_visits_engaged = max(total_engaged_sessions, na.rm = TRUE),
 
     # Ignore 0s when determining minimum active time
     min_time_min = round(
@@ -316,20 +346,20 @@ visits_minmax_summary <- weekly_usage |>
     avg_weekly_downloads = round(total_downloads / pmax(weeks_active, 1), 1),
 
     # Clean up Inf, NA, and NaN values if an app had zero active weeks
-    min_weekly_visits = if_else(
-      is.infinite(min_weekly_visits),
-      0,
-      min_weekly_visits
-    ),
+    min_weekly_visits = if_else(is.infinite(min_weekly_visits), 0, min_weekly_visits),
+    min_weekly_visits_engaged = if_else(is.infinite(min_weekly_visits_engaged), 0, min_weekly_visits_engaged),
     min_time_min = if_else(is.infinite(min_time_min), 0, min_time_min),
+    
     median_weekly_visits = replace_na(median_weekly_visits, 0),
+    median_weekly_visits_engaged = replace_na(median_weekly_visits_engaged, 0),
+    
     avg_time_min = if_else(is.nan(avg_time_min), 0, avg_time_min)
   ) |>
   select(-weeks_active, -total_downloads) |>
   arrange(desc(max_weekly_visits))
 
 
-#  OUTPUT LISTS
+# OUTPUT LISTS
 summary_tables <- list(
   usage_summary = usage_summary,
   location_summary = location_summary,
@@ -346,7 +376,7 @@ tech_breakdowns <- list(
   browser_summary = browser_summary
 )
 
-#  WRITE SUMMARY CSVs
+# WRITE SUMMARY CSVs
 # comment out the imap loops below to avoid overwriting CSVs during development
 
 imap(summary_tables, \(x, name) {
