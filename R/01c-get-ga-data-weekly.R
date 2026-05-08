@@ -1,7 +1,9 @@
 # Purpose: Weekly Update. Download raw data from GA4 and save it locally (caching)
 
 # Purpose: Weekly incremental GA4 raw-data update into raw data files.
-source("R/00-setup.R")
+if (!exists("required_packages")) {
+  source("R/00-setup.R")
+}
 
 # set end date to yesterday by default to avoid partial data for the current day
 end_date <- as.character(Sys.Date() - 1)
@@ -190,6 +192,53 @@ download_data_raw <- append_distinct(
   download_data_raw,
   download_new,
   key_cols = c("date", "pageTitle", "pagePath", "eventName", "file_label")
+)
+
+# WEEKLY
+weekly_usage_raw <- readRDS(file.path(DATA_RAW, "weekly_usage_raw.rds"))
+old_weekly_rows <- nrow(weekly_usage_raw)
+
+# Last cached ISO year-week in the weekly dataset (format: "YYYYWW", e.g., "202618")
+last_week <- max(weekly_usage_raw$isoYearIsoWeek, na.rm = TRUE)
+
+# Build Jan 4th for that ISO year.
+# ISO week-date rule: the week containing Jan 4 is always ISO week 1.
+jan4 <- as.Date(sprintf("%s-01-04", substr(last_week, 1, 4)))
+
+# Compute Monday of the week AFTER `last_week`:
+# 1) as.integer(format(jan4, "%u")) gives ISO weekday of Jan 4 (1=Mon ... 7=Sun)
+# 2) jan4 - (weekday - 1) moves back to Monday of ISO week 1
+# 3) + (WW * 7) jumps forward WW weeks:
+#    - if last_week is YYYY18, this lands on Monday of ISO week 19
+# 4) as.character(...) keeps date format consistent for ga_data(date_range = ...)
+weekly_start <- as.character(
+  jan4 - (as.integer(format(jan4, "%u")) - 1L) + as.integer(substr(last_week, 5, 6)) * 7L
+)
+
+weekly_new <- if (as.Date(weekly_start) <= as.Date(end_date_weekly)) {
+  ga_data(
+    propertyId = GA_PROPERTY_ID,
+    date_range = c(weekly_start, end_date_weekly),
+    metrics = c(
+      "totalUsers",
+      "activeUsers",
+      "sessions",
+      "engagedSessions",
+      "engagementRate",
+      "averageSessionDuration",
+      "userEngagementDuration"
+    ),
+    dimensions = c("isoYearIsoWeek", "pageTitle", "pagePath"),
+    limit = -1
+  )
+} else {
+  weekly_usage_raw[0, ]
+}
+
+weekly_usage_raw <- append_distinct(
+  weekly_usage_raw,
+  weekly_new,
+  key_cols = c("isoYearIsoWeek", "pageTitle", "pagePath")
 )
 
 # overwrite 01a raw files with updated data
