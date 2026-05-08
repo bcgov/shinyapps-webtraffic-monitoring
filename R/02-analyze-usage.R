@@ -1,6 +1,8 @@
 # Purpose: Generate the "Snapshot" report for Business Owners
 
-source("R/00-setup.R")
+if (!exists("required_packages")) {
+  source("R/00-setup.R")
+}
 
 # # Load the data we fetched in 01a-get-ga-data.R
 # load(file.path(DATA_RAW, "ga_raw_data.RData"))
@@ -314,12 +316,18 @@ visits_minmax_summary <- weekly_usage |>
     max_weekly_visits = max(total_sessions, na.rm = TRUE),
 
     # engaged visits metrics
-    min_weekly_visits_engaged = min(total_engaged_sessions[total_engaged_sessions > 0], na.rm = TRUE),
+    min_weekly_visits_engaged = min(
+      total_engaged_sessions[total_engaged_sessions > 0],
+      na.rm = TRUE
+    ),
     median_weekly_visits_engaged = median(
       total_engaged_sessions[total_engaged_sessions > 0],
       na.rm = TRUE
     ),
-    avg_weekly_visits_engaged = round(mean(total_engaged_sessions, na.rm = TRUE), 1),
+    avg_weekly_visits_engaged = round(
+      mean(total_engaged_sessions, na.rm = TRUE),
+      1
+    ),
     max_weekly_visits_engaged = max(total_engaged_sessions, na.rm = TRUE),
 
     # Ignore 0s when determining minimum active time
@@ -346,13 +354,21 @@ visits_minmax_summary <- weekly_usage |>
     avg_weekly_downloads = round(total_downloads / pmax(weeks_active, 1), 1),
 
     # Clean up Inf, NA, and NaN values if an app had zero active weeks
-    min_weekly_visits = if_else(is.infinite(min_weekly_visits), 0, min_weekly_visits),
-    min_weekly_visits_engaged = if_else(is.infinite(min_weekly_visits_engaged), 0, min_weekly_visits_engaged),
+    min_weekly_visits = if_else(
+      is.infinite(min_weekly_visits),
+      0,
+      min_weekly_visits
+    ),
+    min_weekly_visits_engaged = if_else(
+      is.infinite(min_weekly_visits_engaged),
+      0,
+      min_weekly_visits_engaged
+    ),
     min_time_min = if_else(is.infinite(min_time_min), 0, min_time_min),
-    
+
     median_weekly_visits = replace_na(median_weekly_visits, 0),
     median_weekly_visits_engaged = replace_na(median_weekly_visits_engaged, 0),
-    
+
     avg_time_min = if_else(is.nan(avg_time_min), 0, avg_time_min)
   ) |>
   select(-weeks_active, -total_downloads) |>
