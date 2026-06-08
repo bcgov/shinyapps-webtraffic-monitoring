@@ -1,3 +1,17 @@
+# Copyright 2026 Province of British Columbia
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Purpose: Weekly Update. Download raw data from GA4 and save it locally (caching)
 
 # Purpose: Weekly incremental GA4 raw-data update into raw data files.
@@ -212,7 +226,9 @@ jan4 <- as.Date(sprintf("%s-01-04", substr(last_week, 1, 4)))
 #    - if last_week is YYYY18, this lands on Monday of ISO week 19
 # 4) as.character(...) keeps date format consistent for ga_data(date_range = ...)
 weekly_start <- as.character(
-  jan4 - (as.integer(format(jan4, "%u")) - 1L) + as.integer(substr(last_week, 5, 6)) * 7L
+  jan4 -
+    (as.integer(format(jan4, "%u")) - 1L) +
+    as.integer(substr(last_week, 5, 6)) * 7L
 )
 
 weekly_new <- if (as.Date(weekly_start) <= as.Date(end_date_weekly)) {
