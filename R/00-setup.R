@@ -1,4 +1,18 @@
-# Purpose: Load libraries and authenticate with Google Analytics and shinyapps.io
+# Copyright 2026 Province of British Columbia
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# # Purpose: Load libraries and authenticate with Google Analytics and shinyapps.io
 
 #  Packages
 required_packages <- c(
@@ -102,7 +116,10 @@ if (nzchar(extra_renviron) && file.exists(extra_renviron)) {
 #  Configuration (prefer env vars)
 GA_PROPERTY_ID <- optional_env("GA_PROPERTY_ID", default = "394480605")
 GA_DATE_START <- optional_env("GA_DATE_START", default = "2024-01-01")
-GA_DATE_END <- optional_env("GA_DATE_END", default = as.character(Sys.Date() - 1)) # default to yesterday to avoid partial current-day data
+GA_DATE_END <- optional_env(
+  "GA_DATE_END",
+  default = as.character(Sys.Date() - 1)
+) # default to yesterday to avoid partial current-day data
 
 #  GA Service Account Auth
 GA_SERVICE_EMAIL <- require_env("GA_SERVICE_EMAIL")
