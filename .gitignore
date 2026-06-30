@@ -26,3 +26,9 @@ ga-auth-key.json
 rsconnect/
 /Report/dashboard_files/
 *.txt
+data/
+*.csv
+/.quarto/
+**/*.quarto_ipynb
+/.posit/assistant
+*.html
