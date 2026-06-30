@@ -24,7 +24,7 @@ message("Step 1: Fetching latest GA4 data...")
 source("R/01c-get-ga-data-weekly.R")
 
 message("Step 2: Analyzing usage and updating summary tables...")
-source("R/02-analyze-usage.R")
+source("R/02a-analyze-usage.R")
 
 
 # ==============================================================================
@@ -62,7 +62,7 @@ date_suffix <- format(latest_week_date, "%Y-%m-%d")
 message("Step 4: Rendering Quarto dashboard...")
 
 # This generates the default "Report/dashboard.html"
-quarto_render("Report/dashboard.qmd")
+quarto_render("Report/shinyapps_dashboard.qmd")
 
 
 # ==============================================================================
